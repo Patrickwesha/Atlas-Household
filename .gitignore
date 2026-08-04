@@ -1,0 +1,13 @@
+# Secrets and local env (never commit real values)
+.env
+.env.*
+!.env.example
+
+# Real seed data (only seed.example.json is committed)
+seed.json
+
+# Dependencies and build output
+node_modules/
+dist/
+__pycache__/
+.venv/

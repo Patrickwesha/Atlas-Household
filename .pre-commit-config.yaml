@@ -1,0 +1,11 @@
+# Secret scanning on every commit.
+# Enable it locally once with:
+#   pre-commit install
+# After that, gitleaks scans staged changes and blocks the commit if it
+# finds anything that looks like a secret. This is a local backstop; GitHub
+# push protection is the server-side one.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
