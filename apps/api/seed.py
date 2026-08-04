@@ -10,16 +10,19 @@ same day is a no-op. due_on is resolved at runtime in America/Chicago.
 Slice 1 only: one household, five members, two chore instances for today.
 
 Run from apps/api:
-    uv run python seed.py
+    uv run python seed.py              # strict: on conflict (id) do nothing
+    uv run python seed.py --refresh    # dev opt-in: re-date the instances to today
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -43,6 +46,20 @@ def load_env_file(path: Path) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Seed the Atlas Household database (slice 1)."
+    )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "Dev opt-in: delete the fixed-ID chore instances and re-insert them "
+            "dated today (America/Chicago). NOT the default; never use on an "
+            "automated path."
+        ),
+    )
+    args = parser.parse_args()
+
     if not SEED_JSON.exists():
         print(f"ERROR: {SEED_JSON.name} not found. Copy seed.example.json to seed.json", file=sys.stderr)
         print("and fill in real data (seed.json is gitignored).", file=sys.stderr)
@@ -70,10 +87,12 @@ def main() -> int:
             return 1
 
     today = datetime.now(TZ).date()
-    print(f"Seeding '{household['name']}' for {today.isoformat()} (America/Chicago) ...")
+    verb = "Refreshing" if args.refresh else "Seeding"
+    print(f"{verb} '{household['name']}' for {today.isoformat()} (America/Chicago) ...")
 
     with psycopg.connect(direct_url) as conn:            # one transaction, commits on clean exit
         with conn.cursor() as cur:
+            # Household and members are always strict on-conflict-do-nothing.
             cur.execute(
                 "insert into households (id, name) values (%s, %s) on conflict (id) do nothing",
                 (household["id"], household["name"]),
@@ -84,6 +103,14 @@ def main() -> int:
                     "values (%s, %s, %s, %s, %s) on conflict (id) do nothing",
                     (m["id"], household["id"], m["name"], m["role"], m["color"]),
                 )
+            if args.refresh:
+                # Opt-in only: drop the fixed-ID instances so they re-insert dated
+                # today (and reset to not-done). Instances only — never household
+                # or members.
+                cur.execute(
+                    "delete from chore_instances where household_id = %s and id = any(%s)",
+                    (UUID(household["id"]), [UUID(c["id"]) for c in chores]),
+                )
             for c in chores:
                 cur.execute(
                     "insert into chore_instances (id, household_id, assignee_id, title, due_on) "
@@ -91,8 +118,11 @@ def main() -> int:
                     (c["id"], household["id"], member_id_by_key[c["assignee"]], c["title"], today),
                 )
 
-    print(f"  household: 1 | members: {len(members)} | chore_instances for today: {len(chores)}")
-    print("Seed complete. Existing rows (matching id) were left untouched.")
+    if args.refresh:
+        print(f"  refreshed {len(chores)} chore instance(s) to {today.isoformat()}.")
+    else:
+        print(f"  household: 1 | members: {len(members)} | chore_instances for today: {len(chores)}")
+        print("Seed complete. Existing rows (matching id) were left untouched.")
     return 0
 
 
