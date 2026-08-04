@@ -1,0 +1,17 @@
+{
+  "household": {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "name": "Example Household"
+  },
+  "members": [
+    { "id": "00000000-0000-0000-0000-000000000002", "key": "adult_one",     "name": "Adult One",     "role": "adult",     "color": "#2563EB" },
+    { "id": "00000000-0000-0000-0000-000000000003", "key": "adult_two",     "name": "Adult Two",     "role": "adult",     "color": "#DB2777" },
+    { "id": "00000000-0000-0000-0000-000000000004", "key": "kid_one",       "name": "Kid One",       "role": "kid",       "color": "#16A34A" },
+    { "id": "00000000-0000-0000-0000-000000000005", "key": "kid_two",       "name": "Kid Two",       "role": "kid",       "color": "#EA580C" },
+    { "id": "00000000-0000-0000-0000-000000000006", "key": "dependent_one", "name": "Dependent One", "role": "dependent", "color": "#7C3AED" }
+  ],
+  "chores_today": [
+    { "id": "00000000-0000-0000-0000-000000000007", "assignee": "adult_one", "title": "Example chore A" },
+    { "id": "00000000-0000-0000-0000-000000000008", "assignee": "kid_one",   "title": "Example chore B" }
+  ]
+}
