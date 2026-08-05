@@ -1,0 +1,248 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #f1f5f9;
+  --card: #ffffff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --danger: #b91c1c;
+  --accent: #2563eb;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  min-height: 100svh;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  /* Kiosk: no accidental scroll, zoom, text-select, or tap flash. */
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.screen {
+  min-height: 100svh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+}
+
+.center {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 1.5rem;
+}
+
+/* ---------- member tiles ---------- */
+.board-title {
+  font-size: 2.5rem;
+  margin: 0 0 24px;
+  text-align: center;
+}
+
+.tiles {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+  align-content: center;
+}
+
+.tile {
+  border: none;
+  border-radius: 24px;
+  color: #fff;
+  padding: 32px;
+  min-height: 30vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  font: inherit;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  transition: transform 0.05s ease;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.tile:active {
+  transform: scale(0.97);
+}
+.tile-disabled,
+.tile-disabled:active {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
+  transform: none;
+}
+.tile-name {
+  font-size: 2.4rem;
+  font-weight: 700;
+}
+.tile-sub {
+  font-size: 1.4rem;
+  opacity: 0.95;
+}
+
+/* ---------- a member's chores ---------- */
+.chores-screen {
+  overflow: hidden;
+}
+.chores-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.chores-header h1 {
+  font-size: 2.6rem;
+  margin: 0;
+}
+.back-btn {
+  border: 2px solid var(--muted);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 16px;
+  padding: 16px 28px;
+  font-size: 1.5rem;
+  cursor: pointer;
+  font: inherit;
+}
+.back-btn:active {
+  transform: scale(0.97);
+}
+
+.chore-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.chore {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border: 3px solid var(--line);
+  background: var(--card);
+  border-radius: 20px;
+  padding: 28px;
+  font-size: 2rem;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  transition: transform 0.05s ease;
+}
+.chore:active {
+  transform: scale(0.99);
+}
+.chore .check {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 3px solid #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+.chore-done {
+  opacity: 0.6;
+}
+.chore-done .chore-title {
+  text-decoration: line-through;
+}
+.chore-done .check {
+  border: none;
+}
+.big-empty {
+  font-size: 2rem;
+  text-align: center;
+  margin-top: 15vh;
+}
+
+/* ---------- setup / error cards ---------- */
+.card {
+  background: var(--card);
+  border-radius: 24px;
+  padding: 40px;
+  max-width: 520px;
+  width: 100%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+.card h1 {
+  font-size: 2rem;
+  margin: 0 0 12px;
+}
+.error-card h1 {
+  color: var(--danger);
+}
+.token-input {
+  width: 100%;
+  font-size: 1.5rem;
+  padding: 18px;
+  border: 2px solid #cbd5e1;
+  border-radius: 14px;
+  margin: 20px 0;
+  font: inherit;
+}
+.big-btn {
+  width: 100%;
+  font-size: 1.5rem;
+  padding: 20px;
+  border: none;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  font-family: inherit;
+}
+.big-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.big-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* ---------- offline banner ---------- */
+.offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--danger);
+  color: #fff;
+  text-align: center;
+  padding: 14px;
+  font-size: 1.2rem;
+  z-index: 10;
+}
