@@ -1,0 +1,367 @@
+<!doctype html>
+<!--
+  ══════════════════════════════════════════════════════════════════════════
+  PROVENANCE — READ THIS FIRST
+
+  This is NOT the original mock. The HTML prototype referenced in the Phase 1
+  brief was never received (no attachment reached the session), so this file
+  was reconstructed from the written "TAKE NOW" spec and then kept in sync
+  with what actually shipped in apps/web.
+
+  Treat it as: "a static, self-contained picture of the design as built".
+  Do NOT treat it as: "the designer's original intent".
+
+  If the original mock turns up, replace this file with it and re-diff the
+  implementation against it — the colours, spacing, and avatar shapes here are
+  a good-faith reconstruction, not a faithful copy.
+  ══════════════════════════════════════════════════════════════════════════
+
+  Names below are placeholders. No real family data appears in this file.
+
+  Deliberately absent, because each would state something the data cannot
+  back (see docs/GAUNTLET-01.md and the Phase 1 DO NOT SHIP list):
+    · due times            — chore_instances has due_on (a date), no cutoff time
+    · escalation copy      — there is no notification service
+    · the Calendar tab     — there is no history endpoint
+    · subtask expanders    — there is no chore_subtask_instances table
+    · a tappable dependent — the API refuses a dependent completion
+    · a checkbox on the 8pm strip — nothing records that it happened
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Atlas Household — kiosk design reference</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <style>
+      * { box-sizing: border-box; }
+
+      :root {
+        /* ground */
+        --grad-a: #8b5cf6;  --grad-b: #6d28d9;  --grad-c: #4c1d95;
+        /* sheet + ink */
+        --sheet: #ffffff;
+        --ink: #1e1b4b;       /* 15.99:1 on white — measured */
+        --ink-soft: #5b5486;  /*  6.10:1 on white */
+        --line: #eae7f5;  --track: #e9e5f7;
+        /* states */
+        --done: #15803d;      /*  5.02:1 with white text — measured */
+        --done-tint: #f0fdf4; --done-line: #bbf7d0;
+        --accent: #6d28d9;
+        --radius-sheet: 36px; --radius-tile: 28px; --radius-row: 22px;
+
+        font-family: 'Nunito', ui-rounded, 'SF Pro Rounded', 'Segoe UI Rounded',
+          'Varela Round', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        padding: 40px 20px;
+        background: #2b1259;
+        color: var(--ink);
+        display: flex; flex-direction: column; align-items: center; gap: 40px;
+      }
+
+      .label {
+        color: #d7c9f7; font-size: 15px; font-weight: 800;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        width: min(1180px, 100%); margin-bottom: -24px;
+      }
+
+      /* A stand-in for the iPad viewport. */
+      .frame {
+        width: min(1180px, 100%); aspect-ratio: 1180 / 820;
+        background: linear-gradient(160deg, var(--grad-a) 0%, var(--grad-b) 48%, var(--grad-c) 100%);
+        border-radius: 22px; overflow: hidden; position: relative;
+        display: flex; flex-direction: column; gap: 18px; padding: 20px;
+        box-shadow: 0 30px 70px rgba(0,0,0,.5);
+      }
+
+      /* ---------- clock + date header ---------- */
+      .kiosk-header {
+        display: flex; align-items: baseline; justify-content: space-between;
+        gap: 20px; color: #fff; padding: 2px 10px 0; flex: 0 0 auto;
+      }
+      .clock { font-size: 3.2rem; font-weight: 800; line-height: 1; letter-spacing: -.01em;
+               text-shadow: 0 2px 8px rgba(30,12,70,.35); }
+      .clock-date { font-size: 1.35rem; font-weight: 700; opacity: .92;
+                    text-shadow: 0 1px 4px rgba(30,12,70,.35); }
+      .household-name { font-size: 1.6rem; font-weight: 800; opacity: .95; text-align: right;
+                        text-shadow: 0 1px 4px rgba(30,12,70,.35); }
+
+      /* ---------- the white sheet ---------- */
+      .sheet {
+        background: var(--sheet); border-radius: var(--radius-sheet);
+        box-shadow: 0 24px 60px rgba(35,12,80,.28); padding: 26px;
+        flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 20px;
+      }
+
+      /* ---------- family screen ---------- */
+      .tiles {
+        flex: 1 1 auto; min-height: 0; display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 18px; align-content: center;
+      }
+      .tile {
+        border: 3px solid var(--line); border-radius: var(--radius-tile);
+        background: var(--sheet); padding: 22px 14px 20px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 14px; min-height: 260px; font: inherit; color: var(--ink); cursor: pointer;
+      }
+      .tile-name { font-size: 1.9rem; font-weight: 800; line-height: 1.1; text-align: center; }
+
+      /* Count pill — the number a parent reads from across the kitchen. */
+      .pill {
+        font-size: 1.15rem; font-weight: 800; padding: 9px 18px; border-radius: 999px;
+        background: var(--ink); color: #fff; white-space: nowrap;
+      }
+      .pill-clear { background: var(--done); }
+
+      /* Dependent tile: a face and a name. No count, no ring, not a button. */
+      .tile-static { cursor: default; background: #faf9fe; border-style: dashed; border-color: #ded8f2; }
+      .tile-static .tile-name { color: var(--ink-soft); }
+
+      /* ---------- 8pm family reset: schedule display, never a claim ---------- */
+      .reset-strip {
+        flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+        background: #f6f4fe; border: 2px solid var(--line);
+        border-radius: var(--radius-row); padding: 16px 22px;
+      }
+      .reset-time { font-size: 1.4rem; font-weight: 800; color: var(--accent); white-space: nowrap; }
+      .reset-label { font-size: 1.25rem; font-weight: 700; flex: 1 1 auto; }
+      .reset-note { font-size: 1rem; font-weight: 700; color: var(--ink-soft); white-space: nowrap; }
+
+      /* ---------- person screen ---------- */
+      .person-header { display: flex; align-items: center; gap: 18px; flex: 0 0 auto; }
+      .back-btn {
+        flex: 0 0 auto; border: 3px solid var(--line); background: var(--sheet); color: var(--ink);
+        border-radius: 20px; padding: 20px 30px; font-size: 1.4rem; font-weight: 800;
+        font-family: inherit; min-height: 76px; cursor: pointer;
+      }
+      .person-meta { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+      .person-name { font-size: 2.4rem; font-weight: 800; margin: 0; line-height: 1.1; }
+      .progress { display: flex; align-items: center; gap: 14px; }
+      .progress-track { flex: 1 1 auto; height: 18px; border-radius: 999px; background: var(--track); overflow: hidden; }
+      .progress-fill { height: 100%; border-radius: 999px; }
+      .progress-label { font-size: 1.2rem; font-weight: 800; color: var(--ink-soft); white-space: nowrap; }
+
+      .chore-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column;
+                    gap: 14px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+      .chore {
+        width: 100%; display: flex; align-items: center; gap: 20px;
+        border: 3px solid var(--line); background: var(--sheet); border-radius: var(--radius-row);
+        padding: 26px 28px; font-size: 1.9rem; font-weight: 700; text-align: left;
+        color: var(--ink); font-family: inherit; min-height: 104px; cursor: pointer;
+      }
+      .chore .check {
+        flex: 0 0 auto; width: 56px; height: 56px; border-radius: 50%;
+        border: 4px solid #cfc9e8; display: flex; align-items: center; justify-content: center;
+        color: #fff; font-size: 2rem; font-weight: 800; line-height: 1;
+      }
+      /* Done: green ground + filled check + muted title. Reads as "green row"
+         from across the kitchen before any word is legible. */
+      .chore-done { background: var(--done-tint); border-color: var(--done-line); }
+      .chore-done .chore-title { color: var(--ink-soft); }
+      .chore-done .check { background: var(--done); border-color: var(--done); }
+
+      /* ---------- toast with undo ---------- */
+      .toast {
+        position: absolute; left: 50%; transform: translateX(-50%); bottom: 26px;
+        display: flex; align-items: center; gap: 20px;
+        background: var(--ink); color: #fff; border-radius: 999px;
+        padding: 16px 16px 16px 28px; box-shadow: 0 16px 40px rgba(20,8,50,.45);
+      }
+      .toast-text { font-size: 1.35rem; font-weight: 800; }
+      .toast-undo {
+        border: none; background: #fff; color: var(--ink); font-family: inherit;
+        font-size: 1.25rem; font-weight: 800; border-radius: 999px;
+        padding: 16px 30px; min-height: 60px; cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="label">Family screen — tap a name</div>
+    <div class="frame">
+      <header class="kiosk-header">
+        <div>
+          <div class="clock">7:12 PM</div>
+          <div class="clock-date">Thursday, August 7</div>
+        </div>
+        <div class="household-name">The Example Household</div>
+      </header>
+
+      <div class="sheet">
+        <div class="tiles">
+          <!-- Ring = today's done / total. Pill = what is left. -->
+          <div class="tile">
+            <svg viewBox="0 0 120 120" width="132" height="132" aria-hidden="true">
+              <defs><clipPath id="c1"><circle cx="60" cy="60" r="46" /></clipPath></defs>
+              <circle cx="60" cy="60" r="46" fill="#2563EB24" />
+              <g clip-path="url(#c1)" transform="translate(10,4)">
+                <circle cx="50" cy="50" r="30" fill="#2E1F1B" />
+                <circle cx="24" cy="60" r="4.5" fill="#A96B3C" /><circle cx="76" cy="60" r="4.5" fill="#A96B3C" />
+                <circle cx="50" cy="58" r="26" fill="#A96B3C" />
+                <circle cx="41" cy="56" r="3.4" fill="#2B2440" /><circle cx="59" cy="56" r="3.4" fill="#2B2440" />
+                <path d="M41 68 Q50 76 59 68" stroke="#2B2440" stroke-width="3.4" fill="none" stroke-linecap="round" />
+              </g>
+              <circle cx="60" cy="60" r="54" fill="none" stroke="#E9E5F7" stroke-width="8" />
+              <circle cx="60" cy="60" r="54" fill="none" stroke="#2563EB" stroke-width="8" stroke-linecap="round"
+                      stroke-dasharray="339.29" stroke-dashoffset="226.19" transform="rotate(-90 60 60)" />
+            </svg>
+            <span class="tile-name">Adult One</span>
+            <span class="pill">1 to do</span>
+          </div>
+
+          <div class="tile">
+            <svg viewBox="0 0 120 120" width="132" height="132" aria-hidden="true">
+              <defs><clipPath id="c2"><circle cx="60" cy="60" r="46" /></clipPath></defs>
+              <circle cx="60" cy="60" r="46" fill="#DB277724" />
+              <g clip-path="url(#c2)" transform="translate(10,4)">
+                <circle cx="50" cy="50" r="30" fill="#D9A441" />
+                <circle cx="24" cy="60" r="4.5" fill="#F5D0B0" /><circle cx="76" cy="60" r="4.5" fill="#F5D0B0" />
+                <circle cx="50" cy="58" r="26" fill="#F5D0B0" />
+                <rect x="27" y="36" width="46" height="11" rx="5.5" fill="#D9A441" />
+                <circle cx="41" cy="56" r="3.4" fill="#2B2440" /><circle cx="59" cy="56" r="3.4" fill="#2B2440" />
+                <path d="M41 68 Q50 76 59 68" stroke="#2B2440" stroke-width="3.4" fill="none" stroke-linecap="round" />
+              </g>
+              <circle cx="60" cy="60" r="54" fill="none" stroke="#E9E5F7" stroke-width="8" />
+              <circle cx="60" cy="60" r="54" fill="none" stroke="#DB2777" stroke-width="8" stroke-linecap="round"
+                      stroke-dasharray="339.29" stroke-dashoffset="0" transform="rotate(-90 60 60)" />
+            </svg>
+            <span class="tile-name">Adult Two</span>
+            <span class="pill pill-clear">All done</span>
+          </div>
+
+          <div class="tile">
+            <svg viewBox="0 0 120 120" width="132" height="132" aria-hidden="true">
+              <defs><clipPath id="c3"><circle cx="60" cy="60" r="46" /></clipPath></defs>
+              <circle cx="60" cy="60" r="46" fill="#16A34A24" />
+              <g clip-path="url(#c3)" transform="translate(10,4)">
+                <circle cx="50" cy="50" r="30" fill="#D9A441" />
+                <circle cx="24" cy="60" r="4.5" fill="#D19A66" /><circle cx="76" cy="60" r="4.5" fill="#D19A66" />
+                <circle cx="50" cy="58" r="26" fill="#D19A66" />
+                <circle cx="41" cy="56" r="3.4" fill="#2B2440" /><circle cx="59" cy="56" r="3.4" fill="#2B2440" />
+                <path d="M41 68 Q50 76 59 68" stroke="#2B2440" stroke-width="3.4" fill="none" stroke-linecap="round" />
+              </g>
+              <circle cx="60" cy="60" r="54" fill="none" stroke="#E9E5F7" stroke-width="8" />
+              <circle cx="60" cy="60" r="54" fill="none" stroke="#16A34A" stroke-width="8" stroke-linecap="round"
+                      stroke-dasharray="339.29" stroke-dashoffset="113.10" transform="rotate(-90 60 60)" />
+            </svg>
+            <span class="tile-name">Kid One</span>
+            <span class="pill">1 to do</span>
+          </div>
+
+          <div class="tile">
+            <svg viewBox="0 0 120 120" width="132" height="132" aria-hidden="true">
+              <defs><clipPath id="c4"><circle cx="60" cy="60" r="46" /></clipPath></defs>
+              <circle cx="60" cy="60" r="46" fill="#EA580C24" />
+              <g clip-path="url(#c4)" transform="translate(10,4)">
+                <circle cx="50" cy="50" r="30" fill="#5A3825" />
+                <rect x="19" y="48" width="11" height="34" rx="5.5" fill="#5A3825" />
+                <rect x="70" y="48" width="11" height="34" rx="5.5" fill="#5A3825" />
+                <circle cx="24" cy="60" r="4.5" fill="#7A4A28" /><circle cx="76" cy="60" r="4.5" fill="#7A4A28" />
+                <circle cx="50" cy="58" r="26" fill="#7A4A28" />
+                <circle cx="41" cy="56" r="3.4" fill="#2B2440" /><circle cx="59" cy="56" r="3.4" fill="#2B2440" />
+                <path d="M41 68 Q50 76 59 68" stroke="#2B2440" stroke-width="3.4" fill="none" stroke-linecap="round" />
+              </g>
+              <circle cx="60" cy="60" r="54" fill="none" stroke="#E9E5F7" stroke-width="8" />
+              <circle cx="60" cy="60" r="54" fill="none" stroke="#EA580C" stroke-width="8" stroke-linecap="round"
+                      stroke-dasharray="339.29" stroke-dashoffset="339.29" transform="rotate(-90 60 60)" />
+            </svg>
+            <span class="tile-name">Kid Two</span>
+            <span class="pill">2 to do</span>
+          </div>
+
+          <!-- Dependent: face + name only. No ring, no pill, not a button. -->
+          <div class="tile tile-static">
+            <svg viewBox="0 0 120 120" width="132" height="132" aria-hidden="true">
+              <defs><clipPath id="c5"><circle cx="60" cy="60" r="46" /></clipPath></defs>
+              <circle cx="60" cy="60" r="46" fill="#7C3AED24" />
+              <g clip-path="url(#c5)" transform="translate(10,4)">
+                <circle cx="50" cy="50" r="30" fill="#2E1F1B" />
+                <rect x="19" y="48" width="11" height="34" rx="5.5" fill="#2E1F1B" />
+                <rect x="70" y="48" width="11" height="34" rx="5.5" fill="#2E1F1B" />
+                <circle cx="24" cy="60" r="4.5" fill="#F5D0B0" /><circle cx="76" cy="60" r="4.5" fill="#F5D0B0" />
+                <circle cx="50" cy="58" r="26" fill="#F5D0B0" />
+                <circle cx="41" cy="56" r="3.4" fill="#2B2440" /><circle cx="59" cy="56" r="3.4" fill="#2B2440" />
+                <path d="M41 68 Q50 76 59 68" stroke="#2B2440" stroke-width="3.4" fill="none" stroke-linecap="round" />
+              </g>
+            </svg>
+            <span class="tile-name">Dependent One</span>
+          </div>
+        </div>
+
+        <div class="reset-strip">
+          <span class="reset-time">8:00 PM</span>
+          <span class="reset-label">Family reset — everyone tidies the common rooms</span>
+          <span class="reset-note">On the schedule</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="label">Person screen — tap a chore, then Undo from the toast</div>
+    <div class="frame">
+      <header class="kiosk-header">
+        <div>
+          <div class="clock">7:12 PM</div>
+          <div class="clock-date">Thursday, August 7</div>
+        </div>
+        <div class="household-name">The Example Household</div>
+      </header>
+
+      <div class="sheet">
+        <div class="person-header">
+          <button class="back-btn">‹ Back</button>
+          <svg viewBox="0 0 120 120" width="84" height="84" aria-hidden="true">
+            <defs><clipPath id="c6"><circle cx="60" cy="60" r="46" /></clipPath></defs>
+            <circle cx="60" cy="60" r="46" fill="#16A34A24" />
+            <g clip-path="url(#c6)" transform="translate(10,4)">
+              <circle cx="50" cy="50" r="30" fill="#D9A441" />
+              <circle cx="24" cy="60" r="4.5" fill="#D19A66" /><circle cx="76" cy="60" r="4.5" fill="#D19A66" />
+              <circle cx="50" cy="58" r="26" fill="#D19A66" />
+              <circle cx="41" cy="56" r="3.4" fill="#2B2440" /><circle cx="59" cy="56" r="3.4" fill="#2B2440" />
+              <path d="M41 68 Q50 76 59 68" stroke="#2B2440" stroke-width="3.4" fill="none" stroke-linecap="round" />
+            </g>
+          </svg>
+          <div class="person-meta">
+            <h1 class="person-name">Kid One</h1>
+            <div class="progress">
+              <div class="progress-track"><div class="progress-fill" style="width:67%;background:#16A34A"></div></div>
+              <span class="progress-label">2 of 3 done</span>
+            </div>
+          </div>
+        </div>
+
+        <ul class="chore-list">
+          <li>
+            <button class="chore chore-done">
+              <span class="check">✓</span><span class="chore-title">Feed the dog</span>
+            </button>
+          </li>
+          <li>
+            <button class="chore chore-done">
+              <span class="check">✓</span><span class="chore-title">Take out the recycling</span>
+            </button>
+          </li>
+          <li>
+            <button class="chore">
+              <span class="check"></span><span class="chore-title">Unload the dishwasher</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="toast">
+        <span class="toast-text">✓ Take out the recycling</span>
+        <button class="toast-undo">Undo</button>
+      </div>
+    </div>
+  </body>
+</html>

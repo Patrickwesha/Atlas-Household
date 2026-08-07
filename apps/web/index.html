@@ -9,11 +9,38 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#2563eb" />
+    <meta name="theme-color" content="#6d28d9" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Atlas" />
     <title>Atlas Household</title>
+
+    <!--
+      Nunito from the Google CDN, loaded WITHOUT blocking first paint.
+
+      A plain <link rel="stylesheet"> is render-blocking: if the kitchen wifi is
+      flaky, the wall iPad would sit on a blank screen until the request times
+      out. The media="print" trick lets the browser fetch it at low priority and
+      apply it only once it has arrived; display=swap means text is painted in
+      the fallback immediately and re-drawn in Nunito when (if) it loads.
+
+      The fallback chain in index.css is the real design target: on iPadOS,
+      ui-rounded resolves to SF Pro Rounded, the closest system match to Nunito.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap"
+      />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>

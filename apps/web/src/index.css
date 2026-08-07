@@ -1,16 +1,46 @@
+/* Atlas Household — kiosk visual system.
+ *
+ * Purple gradient ground, one white rounded "sheet" per screen, rounded tiles.
+ * Everything is sized for a wall-mounted iPad read from across a kitchen, so
+ * type is large, tap targets are large, and text sits on high-contrast ground.
+ *
+ * Font: Nunito from the Google CDN, loaded NON-BLOCKING (see index.html). The
+ * fallback chain below is the one the wall iPad actually renders when the CDN
+ * is slow or unreachable: ui-rounded resolves to SF Pro Rounded on iPadOS,
+ * which is the closest system match to Nunito's geometry and weight.
+ */
+
 * {
   box-sizing: border-box;
 }
 
 :root {
-  --bg: #f1f5f9;
-  --card: #ffffff;
-  --text: #0f172a;
-  --muted: #64748b;
-  --line: #e2e8f0;
+  /* Ground */
+  --grad-a: #8b5cf6;
+  --grad-b: #6d28d9;
+  --grad-c: #4c1d95;
+
+  /* Sheet + ink */
+  --sheet: #ffffff;
+  --ink: #1e1b4b; /* 15.9:1 on white */
+  --ink-soft: #5b5486; /* 6.1:1 on white  */
+  --line: #eae7f5;
+  --track: #e9e5f7;
+
+  /* States */
+  --done: #15803d; /* 5.0:1 with white text */
+  --done-tint: #f0fdf4;
+  --done-line: #bbf7d0;
   --danger: #b91c1c;
-  --accent: #2563eb;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --accent: #6d28d9;
+
+  --radius-sheet: 36px;
+  --radius-tile: 28px;
+  --radius-row: 22px;
+
+  font-family: 'Nunito', ui-rounded, 'SF Pro Rounded', 'Segoe UI Rounded', 'Varela Round',
+    system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-synthesis-weight: auto;
 }
 
 html,
@@ -22,13 +52,15 @@ body,
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: linear-gradient(160deg, var(--grad-a) 0%, var(--grad-b) 48%, var(--grad-c) 100%);
+  background-attachment: fixed;
+  color: var(--ink);
   /* Kiosk: no accidental scroll, zoom, text-select, or tap flash. */
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
 }
 
 .screen {
@@ -36,8 +68,9 @@ body {
   width: 100%;
   display: flex;
   flex-direction: column;
-  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
-    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  gap: 18px;
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
 }
 
 .center {
@@ -47,87 +80,208 @@ body {
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--ink-soft);
   font-size: 1.5rem;
 }
 
-/* ---------- member tiles ---------- */
-.board-title {
-  font-size: 2.5rem;
-  margin: 0 0 24px;
-  text-align: center;
+/* ---------- clock + date header ---------- */
+.kiosk-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  color: #fff;
+  padding: 2px 10px 0;
+  flex: 0 0 auto;
+}
+.clock {
+  font-size: 3.2rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 8px rgba(30, 12, 70, 0.35);
+}
+.clock-date {
+  font-size: 1.35rem;
+  font-weight: 700;
+  opacity: 0.92;
+  text-shadow: 0 1px 4px rgba(30, 12, 70, 0.35);
+}
+.household-name {
+  font-size: 1.6rem;
+  font-weight: 800;
+  opacity: 0.95;
+  text-align: right;
+  text-shadow: 0 1px 4px rgba(30, 12, 70, 0.35);
 }
 
-.tiles {
-  flex: 1;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+/* ---------- the white sheet ---------- */
+.sheet {
+  background: var(--sheet);
+  border-radius: var(--radius-sheet);
+  box-shadow: 0 24px 60px rgba(35, 12, 80, 0.28);
+  padding: 26px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   gap: 20px;
+}
+
+/* ---------- family screen: member tiles ---------- */
+.tiles {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 18px;
   align-content: center;
 }
 
 .tile {
-  border: none;
-  border-radius: 24px;
-  color: #fff;
-  padding: 32px;
-  min-height: 30vh;
+  border: 3px solid var(--line);
+  border-radius: var(--radius-tile);
+  background: var(--sheet);
+  padding: 22px 14px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
   cursor: pointer;
   font: inherit;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-  transition: transform 0.05s ease;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  color: var(--ink);
+  min-height: 260px;
+  transition: transform 0.06s ease;
 }
 .tile:active {
   transform: scale(0.97);
 }
-.tile-disabled,
-.tile-disabled:active {
-  opacity: 0.45;
-  cursor: default;
-  box-shadow: none;
-  transform: none;
-}
+
 .tile-name {
-  font-size: 2.4rem;
-  font-weight: 700;
-}
-.tile-sub {
-  font-size: 1.4rem;
-  opacity: 0.95;
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--ink);
 }
 
-/* ---------- a member's chores ---------- */
-.chores-screen {
-  overflow: hidden;
+/* Count pill. Dark ink on white ground, or white on green-700 when clear —
+ * both well past 4.5:1 so the number survives distance, angle, and glare. */
+.pill {
+  font-size: 1.15rem;
+  font-weight: 800;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  white-space: nowrap;
 }
-.chores-header {
+.pill-clear {
+  background: var(--done);
+  color: #fff;
+}
+
+/* The dependent tile: a face and a name. No count, no ring, not a button. */
+.tile-static {
+  cursor: default;
+  background: #faf9fe;
+  border-style: dashed;
+  border-color: #ded8f2;
+}
+.tile-static .tile-name {
+  color: var(--ink-soft);
+}
+
+/* ---------- 8pm family reset: a schedule line, not a task ---------- */
+.reset-strip {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 24px;
+  background: #f6f4fe;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-row);
+  padding: 16px 22px;
 }
-.chores-header h1 {
-  font-size: 2.6rem;
+.reset-time {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.reset-label {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink);
+  flex: 1 1 auto;
+}
+.reset-note {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* ---------- person screen ---------- */
+.person-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 0 0 auto;
+}
+.person-name {
+  font-size: 2.4rem;
+  font-weight: 800;
   margin: 0;
+  line-height: 1.1;
+}
+.person-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .back-btn {
-  border: 2px solid var(--muted);
-  background: var(--card);
-  color: var(--text);
-  border-radius: 16px;
-  padding: 16px 28px;
-  font-size: 1.5rem;
+  flex: 0 0 auto;
+  border: 3px solid var(--line);
+  background: var(--sheet);
+  color: var(--ink);
+  border-radius: 20px;
+  padding: 20px 30px;
+  font-size: 1.4rem;
+  font-weight: 800;
   cursor: pointer;
-  font: inherit;
+  font-family: inherit;
+  min-height: 76px;
 }
 .back-btn:active {
   transform: scale(0.97);
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.progress-track {
+  flex: 1 1 auto;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--track);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+.progress-label {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--ink-soft);
+  white-space: nowrap;
 }
 
 .chore-list {
@@ -136,10 +290,11 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .chore {
   width: 100%;
@@ -147,58 +302,116 @@ body {
   align-items: center;
   gap: 20px;
   border: 3px solid var(--line);
-  background: var(--card);
-  border-radius: 20px;
-  padding: 28px;
-  font-size: 2rem;
+  background: var(--sheet);
+  border-radius: var(--radius-row);
+  padding: 26px 28px;
+  font-size: 1.9rem;
+  font-weight: 700;
   cursor: pointer;
   text-align: left;
-  color: var(--text);
-  font: inherit;
-  transition: transform 0.05s ease;
+  color: var(--ink);
+  font-family: inherit;
+  min-height: 104px;
+  transition: transform 0.06s ease;
 }
 .chore:active {
   transform: scale(0.99);
 }
 .chore .check {
   flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  border: 3px solid #cbd5e1;
+  border: 4px solid #cfc9e8;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 1.8rem;
-  font-weight: 700;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
 }
+.chore-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Done: green ground, filled green check, muted title. Reads as "green row"
+ * from across the kitchen before any word is legible. */
 .chore-done {
-  opacity: 0.6;
+  background: var(--done-tint);
+  border-color: var(--done-line);
 }
 .chore-done .chore-title {
-  text-decoration: line-through;
+  color: var(--ink-soft);
 }
 .chore-done .check {
-  border: none;
+  background: var(--done);
+  border-color: var(--done);
 }
+
 .big-empty {
   font-size: 2rem;
+  font-weight: 700;
   text-align: center;
-  margin-top: 15vh;
+  margin: auto;
+  color: var(--ink-soft);
+}
+
+/* ---------- toast with undo ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(26px, env(safe-area-inset-bottom));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: var(--ink);
+  color: #fff;
+  border-radius: 999px;
+  padding: 16px 16px 16px 28px;
+  box-shadow: 0 16px 40px rgba(20, 8, 50, 0.45);
+  max-width: min(92vw, 780px);
+}
+.toast-text {
+  font-size: 1.35rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toast-undo {
+  flex: 0 0 auto;
+  border: none;
+  background: #fff;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 1.25rem;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 16px 30px;
+  cursor: pointer;
+  min-height: 60px;
+}
+.toast-undo:active {
+  transform: scale(0.97);
 }
 
 /* ---------- setup / error cards ---------- */
 .card {
-  background: var(--card);
-  border-radius: 24px;
-  padding: 40px;
-  max-width: 520px;
+  background: var(--sheet);
+  border-radius: var(--radius-sheet);
+  padding: 44px;
+  max-width: 560px;
   width: 100%;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 24px 60px rgba(35, 12, 80, 0.28);
 }
 .card h1 {
-  font-size: 2rem;
+  font-size: 2.1rem;
+  font-weight: 800;
   margin: 0 0 12px;
 }
 .error-card h1 {
@@ -208,22 +421,23 @@ body {
   width: 100%;
   font-size: 1.5rem;
   padding: 18px;
-  border: 2px solid #cbd5e1;
-  border-radius: 14px;
+  border: 3px solid #cfc9e8;
+  border-radius: 16px;
   margin: 20px 0;
-  font: inherit;
+  font-family: inherit;
 }
 .big-btn {
   width: 100%;
   font-size: 1.5rem;
-  padding: 20px;
+  padding: 22px;
   border: none;
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--accent);
   color: #fff;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 800;
   font-family: inherit;
+  min-height: 76px;
 }
 .big-btn:disabled {
   opacity: 0.5;
@@ -244,5 +458,12 @@ body {
   text-align: center;
   padding: 14px;
   font-size: 1.2rem;
-  z-index: 10;
+  font-weight: 800;
+  z-index: 30;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
 }
