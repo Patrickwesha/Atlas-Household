@@ -76,6 +76,22 @@ function isSendable(token: string): boolean {
   return /^[\x21-\x7e]+$/.test(token)
 }
 
+// Every request must settle. Without a deadline a dropped Wi-Fi link leaves the
+// socket in TCP retransmit for minutes, and a row lock on the server blocks a
+// write with no bound at all (there is no statement_timeout). A request that
+// never settles is worse here than a failed one: the caller's cleanup never
+// runs, so the row keeps its optimistic tick and stops accepting taps — a
+// permanent false ✓ on a wall display. Generous enough for a cold Lambda.
+const TIMEOUT_MS = 20_000
+
+function timeoutSignal(): AbortSignal | undefined {
+  // AbortSignal.timeout is iPadOS 16+. Older Safari simply gets the old
+  // behaviour rather than a crash.
+  return typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
+    ? AbortSignal.timeout(TIMEOUT_MS)
+    : undefined
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken()
   if (token !== null && !isSendable(token)) {
@@ -85,6 +101,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${BASE}${path}`, {
       ...init,
+      signal: timeoutSignal(),
       headers: {
         ...(init?.headers ?? {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),

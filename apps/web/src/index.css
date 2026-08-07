@@ -176,12 +176,22 @@ button {
   border: none;
   cursor: default;
   align-self: center;
-  opacity: 0.75;
+}
+.pcard-static .ring,
+.pcard-static .inner {
+  opacity: 0.72;
 }
 .pcard-static .ring {
   width: clamp(66px, 8vw, 112px);
 }
-.pcard-static .nm {
+/* .pcard-static.pcard-static, not .pcard-static: this rule and `.pcard .nm`
+ * have equal specificity, and `.pcard .nm` is declared later, so the plain
+ * version silently never applied — the name rendered at full size. Repeating
+ * the class is the smallest thing that wins without an !important.
+ * Opacity is NOT inherited from the card here: applying .75 to the whole card
+ * dropped this name to 3.56:1, the first name on the board to fail under
+ * glare. The name keeps full contrast; the dimming lives on the ring instead. */
+.pcard-static.pcard-static .nm {
   font-size: clamp(15px, 1.5vw, 21px);
   font-weight: 700;
 }
@@ -375,6 +385,15 @@ button {
   list-style: none;
   margin: 0;
 }
+/* Applied only while something really is clipped below (measured in App.tsx),
+ * so the last visible row fades out and reads as "this continues". Without it
+ * the fold can land on a featureless band of row wash at 1.11:1 and the list
+ * looks finished. */
+.list-more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent 100%);
+}
+
 .task {
   background: var(--wash);
   border-radius: 22px;
@@ -571,20 +590,35 @@ button {
 /* Stale board: the last good data is still on screen, so say so rather than
  * letting it read as current. Distinct from the full error card, which means
  * "nothing loaded at all". */
-/* IN FLOW, not fixed. As a fixed overlay it landed on the header exactly when
- * things were already going wrong: it covered 61% of the person's name and the
- * top 11px of the Back button — and won the hit test there, shrinking the only
- * way off the person screen from 56px to 45px. Pushing the layout down instead
- * costs a strip of gradient and covers nothing. */
+/* In flow, and its strip is ALWAYS reserved — the element is rendered even with
+ * nothing wrong, just hidden.
+ *
+ * Two failure modes had to be closed at once. As a fixed overlay it covered 61%
+ * of the person's name and the top 11px of the Back button, and won the hit test
+ * there. Simply moving it into flow fixed that but introduced a worse one: the
+ * banner appears and disappears with the network, so every chore row jumped 46px
+ * against a 104px row pitch — 37% of a row became the row ABOVE it, and a tap
+ * that straddled the change was swallowed entirely. A kid aiming at one chore
+ * marked a different one done.
+ *
+ * Reserving the strip permanently is the only version that neither covers a
+ * control nor moves the list. It costs a band of gradient. */
 .offline-banner {
   flex: 0 0 auto;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--danger);
   color: #fff;
   text-align: center;
-  padding: 14px;
-  padding-top: max(14px, env(safe-area-inset-top));
-  font-size: clamp(14px, 1.4vw, 18px);
+  padding: 8px 14px;
+  padding-top: max(8px, env(safe-area-inset-top));
+  font-size: clamp(13px, 1.3vw, 17px);
   font-weight: 700;
+}
+.offline-banner-idle {
+  visibility: hidden;
 }
 
 @media (max-width: 900px) {

@@ -33,6 +33,8 @@ const TAP_COOLDOWN_MS = 2_000
 
 interface ToastState {
   instanceId: string
+  // Only meaningful for kind 'already': whether the row is currently done.
+  done?: boolean
   // Whose screen produced this toast. The toast is global, so without this it
   // survived every navigation: complete a chore, tap Back, and a live Undo for
   // YOUR chore rode along onto the next kid's screen, where one tap erased it.
@@ -41,7 +43,7 @@ interface ToastState {
   // 'done' offers Undo. 'undone' confirms the destructive direction, which used
   // to happen in complete silence. 'error' is the one thing a failed tap never
   // had: any visible acknowledgement at all.
-  kind: 'done' | 'undone' | 'error'
+  kind: 'done' | 'undone' | 'error' | 'already'
 }
 
 interface Stats {
@@ -78,23 +80,37 @@ export default function App() {
   // which un-does the chore. Measured reversing at every gap from 60ms to
   // 1.2s. A row therefore ignores repeat taps for a moment after it moves.
   const lastTap = useRef<Map<string, number>>(new Map())
+  // Monotonic write counter, and the write number of each row's last confirmed
+  // change. A board GET issued BEFORE a write can be answered AFTER it — a cold
+  // Lambda takes seconds while a warm write takes milliseconds — and that stale
+  // snapshot would otherwise erase a tick that is committed in the database.
+  // Guarding only rows still in flight is not enough: by the time the slow board
+  // response lands, the write has finished and left the in-flight set.
+  const writeSeq = useRef(0)
+  const lastWrite = useRef<Map<string, number>>(new Map())
 
   // Returns the board it fetched, so a caller can reconcile against server
   // truth rather than assuming. null means the fetch failed.
   const refresh = useCallback(async (): Promise<Board | null> => {
+    const issuedAt = writeSeq.current
     try {
       const b = await getBoard()
-      // A poll landing between a tap and its response used to revert the row on
-      // screen — the tick vanished under the kid's finger and came back a
-      // second later. Keep the optimistic row for anything still in flight.
+      // Which rows we know more about than this response does: still in flight,
+      // or written after this request went out. Snapshot NOW, not inside the
+      // updater — React runs that closure later, during render, and by then a
+      // caller's own bookkeeping may have moved on, which would make the merge
+      // preserve a row it should have replaced.
+      const keepLocal = new Set<string>(pending.current)
+      for (const [id, seq] of lastWrite.current) {
+        if (seq > issuedAt) keepLocal.add(id)
+      }
       setBoard((cur) => {
-        if (cur === null || pending.current.size === 0) return b
+        if (cur === null || keepLocal.size === 0) return b
         return {
           ...b,
-          instances: b.instances.map((i) => {
-            if (!pending.current.has(i.id)) return i
-            return cur.instances.find((c) => c.id === i.id) ?? i
-          }),
+          instances: b.instances.map((i) =>
+            keepLocal.has(i.id) ? cur.instances.find((c) => c.id === i.id) ?? i : i,
+          ),
         }
       })
       setError(null)
@@ -132,6 +148,12 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [hasToken, refresh])
+
+  // A grown-up re-entering the token must never meet a button stuck on "Trying…"
+  // left over from the failure that sent them to the setup screen.
+  useEffect(() => {
+    setRetrying(false)
+  }, [hasToken])
 
   // Header clock.
   useEffect(() => {
@@ -196,11 +218,16 @@ export default function App() {
       // the answer to the question the second tap was asking.
       const tappedAt = Date.now()
       if (tappedAt - (lastTap.current.get(instance.id) ?? 0) < TAP_COOLDOWN_MS) {
+        // 'already' STATES the row's current state. It must not reuse the
+        // done/undone wording, which describes a TRANSITION: reporting "not
+        // done any more" for a tap the code deliberately did not act on tells
+        // a kid their work was just undone when nothing happened at all.
         setToast({
           instanceId: instance.id,
           memberId: member.id,
           title: instance.title,
-          kind: instance.completed_at !== null ? 'done' : 'undone',
+          kind: 'already',
+          done: instance.completed_at !== null,
         })
         return
       }
@@ -218,6 +245,8 @@ export default function App() {
           ? await uncompleteInstance(instance.id)
           : await completeInstance(instance.id, member.id)
         applyInstance(updated)
+        writeSeq.current += 1
+        lastWrite.current.set(updated.id, writeSeq.current)
         setToast({
           instanceId: updated.id,
           memberId: member.id,
@@ -240,6 +269,15 @@ export default function App() {
         // green is worse than saying nothing: a kid who obeys it un-does the
         // chore that actually saved.
         const saved = row !== null && (row.completed_at !== null) === !wasDone
+        if (saved) {
+          writeSeq.current += 1
+          lastWrite.current.set(instance.id, writeSeq.current)
+        } else {
+          // Nothing was written, so there is nothing to protect from a second
+          // tap — and the error toast tells the kid to tap again. Leaving the
+          // cooldown armed would swallow the very retry we just asked for.
+          lastTap.current.delete(instance.id)
+        }
         setToast({
           instanceId: instance.id,
           memberId: member.id,
@@ -316,8 +354,14 @@ export default function App() {
                 className="big-btn"
                 disabled={retrying}
                 onClick={() => {
+                  if (retrying) return
                   setRetrying(true)
-                  void refresh().finally(() => window.setTimeout(() => setRetrying(false), 600))
+                  const clear = () => setRetrying(false)
+                  void refresh().finally(() => window.setTimeout(clear, 600))
+                  // Hard stop. This is the only control on the screen; it must
+                  // never be left disabled reading "Trying…" forever, which is
+                  // what happened when a request hung and .finally never ran.
+                  window.setTimeout(clear, 25_000)
                 }}
               >
                 {retrying ? 'Trying…' : 'Try again'}
@@ -380,13 +424,16 @@ export default function App() {
 function Shell({ banner, children }: { banner?: string | null; children: ReactNode }) {
   return (
     <div className="kiosk">
-      {/* In flow, above everything. As a fixed overlay it covered the person's
-          name and the top of the Back button, and won the hit test there. */}
-      {banner ? (
-        <div className="offline-banner" role="alert">
-          {banner}
-        </div>
-      ) : null}
+      {/* Always rendered so its strip is always reserved. Rendering it only on
+          error moved every chore row 46px the moment the network hiccupped,
+          which made kids tap the wrong chore. */}
+      <div
+        className={`offline-banner${banner ? '' : ' offline-banner-idle'}`}
+        role={banner ? 'alert' : undefined}
+        aria-hidden={banner ? undefined : true}
+      >
+        {banner ?? ''}
+      </div>
       {children}
     </div>
   )
@@ -537,6 +584,28 @@ function PersonScreen({
   const done = chores.filter((c) => c.completed_at !== null).length
   const pct = chores.length === 0 ? 0 : Math.round((done / chores.length) * 100)
 
+  // Is anything clipped below the fold? On a 1024x768 iPad the sliver of the
+  // next row can be 23px of flat wash — no check circle, no title, no
+  // scrollbar (iPadOS overlays it) — so the list looks finished when it is not.
+  // A kid does the four chores they can see and walks off. Driven by real
+  // measurement rather than an always-on fade, so it never suggests more
+  // content when the list genuinely ends.
+  const listRef = useRef<HTMLUListElement>(null)
+  const [hasMore, setHasMore] = useState(false)
+  useEffect(() => {
+    const el = listRef.current
+    if (el === null) return
+    const update = () => setHasMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4)
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => {
+      el.removeEventListener('scroll', update)
+      ro.disconnect()
+    }
+  }, [chores.length])
+
   return (
     <div className="screen">
       <div className="head">
@@ -566,7 +635,7 @@ function PersonScreen({
         ) : (
           // Server order (by title) is kept even as rows are completed. Rows must
           // never reshuffle under a finger mid-tap.
-          <ul className="list">
+          <ul className={`list${hasMore ? ' list-more' : ''}`} ref={listRef}>
             {chores.map((c) => {
               const isDone = c.completed_at !== null
               return (
@@ -588,10 +657,21 @@ function PersonScreen({
   )
 }
 
-const TOAST_TEXT: Record<ToastState['kind'], (title: string) => string> = {
-  done: (t) => `${t} — done`,
-  undone: (t) => `${t} — not done any more`,
-  error: (t) => `Couldn't save "${t}". Tap it again.`,
+// 'done' and 'undone' describe a CHANGE that just happened. 'already' describes
+// the row's CURRENT STATE, for a tap that was deliberately not acted on — using
+// the change wording there told a kid their work had just been undone when
+// nothing had happened at all.
+function toastText(t: ToastState): string {
+  switch (t.kind) {
+    case 'done':
+      return `${t.title} — done`
+    case 'undone':
+      return `${t.title} — not done any more`
+    case 'already':
+      return t.done ? `${t.title} is already done ✓` : `${t.title} is not done yet`
+    case 'error':
+      return `Couldn't save "${t.title}". Tap it again.`
+  }
 }
 
 function Toast({
@@ -609,7 +689,7 @@ function Toast({
       role="status"
       aria-live="polite"
     >
-      <span className="toast-text">{toast ? TOAST_TEXT[toast.kind](toast.title) : ''}</span>
+      <span className="toast-text">{toast ? toastText(toast) : ''}</span>
       {canUndo && <button onClick={onUndo}>Undo</button>}
     </div>
   )
