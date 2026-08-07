@@ -30,6 +30,9 @@ const TICK_MS = 10_000
 // deliberate way to reverse a completion inside this window is the Undo button,
 // which is on screen for TOAST_MS and is a bigger, clearer target than the row.
 const TAP_COOLDOWN_MS = 2_000
+// The reconcile after a failed write gets a much smaller budget than the write
+// itself. Two stacked 20s deadlines meant a wifi drop said nothing for 40s.
+const RECONCILE_TIMEOUT_MS = 6_000
 
 interface ToastState {
   instanceId: string
@@ -43,7 +46,7 @@ interface ToastState {
   // 'done' offers Undo. 'undone' confirms the destructive direction, which used
   // to happen in complete silence. 'error' is the one thing a failed tap never
   // had: any visible acknowledgement at all.
-  kind: 'done' | 'undone' | 'error' | 'already'
+  kind: 'done' | 'undone' | 'error' | 'already' | 'unknown'
 }
 
 interface Stats {
@@ -91,10 +94,10 @@ export default function App() {
 
   // Returns the board it fetched, so a caller can reconcile against server
   // truth rather than assuming. null means the fetch failed.
-  const refresh = useCallback(async (): Promise<Board | null> => {
+  const refresh = useCallback(async (timeoutMs?: number): Promise<Board | null> => {
     const issuedAt = writeSeq.current
     try {
-      const b = await getBoard()
+      const b = await getBoard(timeoutMs)
       // Which rows we know more about than this response does: still in flight,
       // or written after this request went out. Snapshot NOW, not inside the
       // updater — React runs that closure later, during render, and by then a
@@ -262,28 +265,45 @@ export default function App() {
         // Leave the pending set BEFORE reconciling, or refresh() will helpfully
         // preserve the row we just rolled back and defeat its own purpose.
         pending.current.delete(instance.id)
-        const reconciled = await refresh()
+        // A much smaller budget than the write's. The outage that killed the
+        // write usually kills this too, and stacking two full deadlines meant
+        // the kid was told nothing at all for 40 seconds.
+        const reconciled = await refresh(RECONCILE_TIMEOUT_MS)
         const row = reconciled?.instances.find((i) => i.id === instance.id) ?? null
-        // Only cry failure if the write really did not happen. Saying
-        // "Couldn't save — tap it again" over a row the refetch just painted
-        // green is worse than saying nothing: a kid who obeys it un-does the
-        // chore that actually saved.
-        const saved = row !== null && (row.completed_at !== null) === !wasDone
-        if (saved) {
-          writeSeq.current += 1
-          lastWrite.current.set(instance.id, writeSeq.current)
-        } else {
-          // Nothing was written, so there is nothing to protect from a second
-          // tap — and the error toast tells the kid to tap again. Leaving the
-          // cooldown armed would swallow the very retry we just asked for.
+
+        if (reconciled === null) {
+          // We could not reach the server, so we DO NOT KNOW whether the write
+          // landed. Saying "couldn't save" here would be a guess presented as
+          // fact — and it is the common case, because the same outage takes out
+          // both requests. Say what is actually true instead.
           lastTap.current.delete(instance.id)
+          setToast({
+            instanceId: instance.id,
+            memberId: member.id,
+            title: instance.title,
+            kind: 'unknown',
+          })
+        } else {
+          // Only cry failure when the board actually shows the write did not
+          // happen. Saying "tap it again" over a row the refetch just painted
+          // green makes a kid un-do the chore that saved.
+          const saved = row !== null && (row.completed_at !== null) === !wasDone
+          if (saved) {
+            writeSeq.current += 1
+            lastWrite.current.set(instance.id, writeSeq.current)
+          } else {
+            // Nothing was written, so there is nothing to protect from a second
+            // tap — and the error toast tells the kid to tap again. Leaving the
+            // cooldown armed would swallow the very retry we just asked for.
+            lastTap.current.delete(instance.id)
+          }
+          setToast({
+            instanceId: instance.id,
+            memberId: member.id,
+            title: row?.title ?? instance.title,
+            kind: saved ? (wasDone ? 'undone' : 'done') : 'error',
+          })
         }
-        setToast({
-          instanceId: instance.id,
-          memberId: member.id,
-          title: row?.title ?? instance.title,
-          kind: saved ? (wasDone ? 'undone' : 'done') : 'error',
-        })
       } finally {
         pending.current.delete(instance.id)
       }
@@ -301,19 +321,41 @@ export default function App() {
       setToast(null)
       applyInstance({ ...instance, completed_at: null, completed_by: null })
       try {
-        applyInstance(await uncompleteInstance(instance.id))
+        const updated = await uncompleteInstance(instance.id)
+        applyInstance(updated)
+        // Undo is a write like any other and MUST register here. Without it,
+        // lastWrite still held the seq of the completion this just reversed, so
+        // a board GET issued after the complete and answered after the undo lost
+        // the `seq > issuedAt` test, the merge took the server's stale row, and
+        // the tick came back on its own — the wall crediting a chore the
+        // database says is not done, for up to a full poll interval.
+        writeSeq.current += 1
+        lastWrite.current.set(updated.id, writeSeq.current)
       } catch {
         applyInstance(instance)
         pending.current.delete(instance.id)
-        const reconciled = await refresh()
+        const reconciled = await refresh(RECONCILE_TIMEOUT_MS)
         const row = reconciled?.instances.find((i) => i.id === instance.id) ?? null
-        const cleared = row !== null && row.completed_at === null
-        setToast({
-          instanceId: instance.id,
-          memberId: instance.assignee_id,
-          title: row?.title ?? instance.title,
-          kind: cleared ? 'undone' : 'error',
-        })
+        if (reconciled === null) {
+          setToast({
+            instanceId: instance.id,
+            memberId: instance.assignee_id,
+            title: instance.title,
+            kind: 'unknown',
+          })
+        } else {
+          const cleared = row !== null && row.completed_at === null
+          if (cleared) {
+            writeSeq.current += 1
+            lastWrite.current.set(instance.id, writeSeq.current)
+          }
+          setToast({
+            instanceId: instance.id,
+            memberId: instance.assignee_id,
+            title: row?.title ?? instance.title,
+            kind: cleared ? 'undone' : 'error',
+          })
+        }
       } finally {
         pending.current.delete(instance.id)
       }
@@ -584,27 +626,6 @@ function PersonScreen({
   const done = chores.filter((c) => c.completed_at !== null).length
   const pct = chores.length === 0 ? 0 : Math.round((done / chores.length) * 100)
 
-  // Is anything clipped below the fold? On a 1024x768 iPad the sliver of the
-  // next row can be 23px of flat wash — no check circle, no title, no
-  // scrollbar (iPadOS overlays it) — so the list looks finished when it is not.
-  // A kid does the four chores they can see and walks off. Driven by real
-  // measurement rather than an always-on fade, so it never suggests more
-  // content when the list genuinely ends.
-  const listRef = useRef<HTMLUListElement>(null)
-  const [hasMore, setHasMore] = useState(false)
-  useEffect(() => {
-    const el = listRef.current
-    if (el === null) return
-    const update = () => setHasMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4)
-    update()
-    el.addEventListener('scroll', update, { passive: true })
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    return () => {
-      el.removeEventListener('scroll', update)
-      ro.disconnect()
-    }
-  }, [chores.length])
 
   return (
     <div className="screen">
@@ -635,7 +656,7 @@ function PersonScreen({
         ) : (
           // Server order (by title) is kept even as rows are completed. Rows must
           // never reshuffle under a finger mid-tap.
-          <ul className={`list${hasMore ? ' list-more' : ''}`} ref={listRef}>
+          <ul className="list">
             {chores.map((c) => {
               const isDone = c.completed_at !== null
               return (
@@ -671,6 +692,11 @@ function toastText(t: ToastState): string {
       return t.done ? `${t.title} is already done ✓` : `${t.title} is not done yet`
     case 'error':
       return `Couldn't save "${t.title}". Tap it again.`
+    // We reached neither the write nor the board, so we genuinely do not know.
+    // Not "couldn't save" — that would be a guess stated as fact, and it is the
+    // usual case, since one outage takes out both requests.
+    case 'unknown':
+      return `Can't reach the server — "${t.title}" might not be saved.`
   }
 }
 
@@ -685,7 +711,7 @@ function Toast({
 }) {
   return (
     <div
-      className={`toast${toast ? ' show' : ''}${toast?.kind === 'error' ? ' toast-error' : ''}`}
+      className={`toast${toast ? ' show' : ''}${toast?.kind === 'error' || toast?.kind === 'unknown' ? ' toast-error' : ''}`}
       role="status"
       aria-live="polite"
     >

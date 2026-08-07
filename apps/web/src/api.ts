@@ -84,15 +84,19 @@ function isSendable(token: string): boolean {
 // permanent false ✓ on a wall display. Generous enough for a cold Lambda.
 const TIMEOUT_MS = 20_000
 
-function timeoutSignal(): AbortSignal | undefined {
+function timeoutSignal(ms: number): AbortSignal | undefined {
   // AbortSignal.timeout is iPadOS 16+. Older Safari simply gets the old
   // behaviour rather than a crash.
   return typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
-    ? AbortSignal.timeout(TIMEOUT_MS)
+    ? AbortSignal.timeout(ms)
     : undefined
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs: number = TIMEOUT_MS,
+): Promise<T> {
   const token = getToken()
   if (token !== null && !isSendable(token)) {
     throw new ApiError(401, 'Stored device token contains characters that cannot be sent')
@@ -101,7 +105,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${BASE}${path}`, {
       ...init,
-      signal: timeoutSignal(),
+      signal: timeoutSignal(timeoutMs),
       headers: {
         ...(init?.headers ?? {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -117,8 +121,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
-export function getBoard(): Promise<Board> {
-  return request<Board>('/api/board')
+// timeoutMs is overridable so a reconcile after a failed write can use a much
+// smaller budget. Stacking two full 20s deadlines meant a wifi drop said nothing
+// at all for 40 seconds.
+export function getBoard(timeoutMs?: number): Promise<Board> {
+  return request<Board>('/api/board', undefined, timeoutMs)
 }
 
 export function completeInstance(id: string, completedBy: string): Promise<Instance> {

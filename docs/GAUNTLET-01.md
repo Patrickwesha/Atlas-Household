@@ -11,10 +11,28 @@ re-tested against the patched tree rather than the one it started on. Round 2
 re-attacked those fixes and found four more FIX NOW, **every one of them caused
 by a round 1 fix**. Round 3 re-attacked round 2's fixes.
 
-That pattern is the main result of this exercise: on this surface, roughly one
-in four fixes introduced a new defect of equal severity, and none of them would
-have been found by testing the code the critics started on. The rounds were not
-ceremony.
+Round 3 found three more, again all caused by round 2's fixes — including one
+where the fix was strictly worse than the defect and was **reverted** rather
+than patched.
+
+That pattern is the main result of this exercise. Across three rounds: 17 FIX
+NOW found, 12 more introduced by the fixes for them. Every single round-2 and
+round-3 FIX NOW was caused by a fix from the round before, and none would have
+been found by testing the code the critics started on. The rounds were not
+ceremony; if anything the ceiling of three is where the loop stopped, not where
+it converged.
+
+**Running tally**
+
+| round | FIX NOW found | of which caused by the previous round's fixes |
+|---|---|---|
+| 1 | 17 | — |
+| 2 | 9 | 9 |
+| 3 | 3 | 3 |
+
+Round 3's findings are fixed. A round 4 would very likely find more, and per the
+hard ceiling it was not run — so the FIX NEXT SLICE list below should be read as
+"known and unfinished", not "everything that is left".
 
 Round 2 was run by three critics covering two domains each rather than six
 covering one, because its attack surface was only the changed code. All six
@@ -426,6 +444,76 @@ disappears once scrolled to the bottom.
 
 ---
 
+## FIX NOW — round 3: defects the round 2 fixes introduced
+
+Round 3 is the ceiling. All fixed and verified; no round 4 was run.
+
+### 27. The scroll-cue fade erased the row it existed to advertise — REVERTED
+`apps/web/src/index.css`, `apps/web/src/App.tsx` — caused by fix 26
+
+The mask faded the bottom 44px of the list **viewport**, not the clipped part,
+so it dimmed the row at the fold — the one a kid can still read.
+
+| viewport | visible px of fold row | mask off | mask on |
+|---|---|---|---|
+| 1080×810 (the wall iPad) | 58 / 92 | 16.14:1 | **2.65:1** |
+| 1024×768 (the case it was written for) | 23 / 92 | 1.11:1 | **1.06:1** |
+| 768×1024, 8 chores | 92 / 92 (fully visible) | 3.85:1 | **2.65:1** |
+
+It improved the cue at **no** viewport tested, made the 1024×768 sliver fainter
+still, and dimmed a fully visible, fully tappable row's check circle below the
+3:1 floor that fix 13 had raised it to.
+
+**Fixed by reverting it**, not by patching it. A clipped list with a weak cue is
+a genuine defect, but it needs a cue that *adds a mark* rather than subtracting
+contrast from content, and that is a design decision rather than a bug fix. It
+goes back on the FIX NEXT SLICE list. On the 10.2" iPad this board is built for,
+the fold leaves a 57.6px sliver with a visible check circle, which does read —
+measure the actual device before assuming this bites. The dead measurement code
+was removed with it; the reasoning is left in a comment so it is not retried.
+
+### 28. Undo was the one write that never registered, so the tick came back
+`apps/web/src/App.tsx` — caused by fix 19
+
+`toggle` bumps `writeSeq` and records `lastWrite` on every confirmed change.
+`undo` did neither. So after an Undo, `lastWrite[id]` still held the sequence of
+the *completion it had just reversed*, and a board GET issued after the complete
+but answered after the undo failed the `seq > issuedAt` test (`N > N` is false).
+The merge took the server's stale row and the chore **re-ticked itself green**,
+with the wall crediting a chore the database says is not done, for up to a full
+poll interval. Found independently by two critics; reproduced without synthetic
+events, using the app's own 60s poll driven by a fake clock.
+
+Fix 19 closed exactly this hole for `toggle` and left its twin open.
+
+**Fixed:** `undo` records its write on both the success and the reconciled path.
+**Verified:** with a stale board GET held across the Undo, the tick stays clear
+and the database agrees.
+
+### 29. A wifi drop said nothing for 40 seconds, then blamed a row that had saved
+`apps/web/src/App.tsx`, `apps/web/src/api.ts` — caused by fixes 3 and 18
+
+Two compounding problems. The write got a full 20s timeout and the reconcile got
+**another** full 20s, with nothing said in between: the row held a false tick for
+20s, lost it silently, then 20 more seconds of nothing. And `saved` was computed
+as `row !== null && …`, so when the reconcile *itself* failed, `refresh()`
+returned `null`, `row` was `null`, and a failed reconcile was treated as proof
+the write had not happened.
+
+That inverts the logic exactly where it matters: the outage that kills the write
+is the same outage that kills the reconcile, so this is the **normal** case, not
+the edge case. Measured: 40.5s from tap to any message, and the message was
+"Couldn't save … Tap it again." over a row committed in the database — the very
+failure fix 16 was written to prevent, still reachable by another route.
+
+**Fixed:** the reconcile gets a 6s budget instead of 20s, and `reconciled ===
+null` is now treated as *don't know* rather than *not saved*, with its own toast
+kind: `Can't reach the server — "X" might not be saved.` **Verified:** the
+honest message appears at 0.3s; a genuinely failed write with a reachable board
+still says "tap it again".
+
+---
+
 ## FIX NEXT SLICE — real, not blocking, not started
 
 **API and data**
@@ -553,6 +641,46 @@ disappears once scrolled to the bottom.
 44. Portrait 810×1080 orphans the dependent onto its own grid row with the lower
     two-thirds of the screen empty. Cosmetic, portrait only.
 
+**Added in round 3**
+
+45. **The clipped-list cue, back on this list after the attempted fix was
+    reverted (see FIX NOW 27).** At 1024×768 the fold lands on a 23px band of
+    flat wash at 1.11:1 with no circle, no text and no scrollbar. Needs a cue
+    that adds a mark rather than dimming content. Not a problem on the 10.2"
+    iPad (57.6px sliver with a visible check circle) — measure the device first.
+46. `refresh()` has no response-ordering guard: two concurrent refreshes (an
+    iPad wake fires both `focus` and `visibilitychange`; a reconcile overlaps
+    the 60s poll) let the *earlier, staler* payload win if it lands last.
+47. The `already` toast states the rolled-back guess as fact during the
+    reconcile window — "X is not done yet" while the database says done.
+48. A second row tap inside the cooldown replaces the `done` toast with
+    `already`, and since `canUndo` requires `kind === 'done'`, **the Undo button
+    disappears** for the rest of the window. The code comment promises Undo here
+    and does not deliver it.
+49. Repeat taps while a write is in flight hit the `pending` guard before the
+    cooldown branch, so they produce no toast at all — the exact swallow the
+    `already` kind was added to prevent.
+50. Tap a chore then tap Back: if the write fails, the toast is suppressed by
+    the `memberId` scope, so nothing is shown anywhere and the family card
+    silently drops back.
+51. The retry button's 25s hard stop is never cleared or re-armed, so attempt
+    #1's timer re-enables the button partway through attempt #2, and each press
+    stacks another request.
+52. `hasMore`'s effect keyed on `[chores.length]` and its ResizeObserver watched
+    a flex-sized box that never changes — it could not re-measure when row
+    heights changed. Removed with the reverted mask; noted because the same trap
+    waits for any future scroll cue.
+53. `.pcard .nm` fails 4.5:1 in portrait: `clamp(18px, 1.9vw, 27px)` pins to
+    18px at 768–810 wide, just under the 18.66px large-text threshold, so all
+    four tappable names measure 3.66–3.85:1. Landscape passes. Pre-existing.
+54. `.offline-banner` adds `padding-top: max(8px, env(safe-area-inset-top))` on
+    top of `.kiosk`'s own `env(safe-area-inset-top)` — a double-counted inset.
+    `env()` is 0 under Playwright, so the on-device effect is **UNVERIFIED**.
+55. A toast can outlive its chore across midnight, showing "X — done" for a row
+    no longer on the board. No ghost row, no crash.
+56. Only 3 chore rows fit on an iPad mini 6 in landscape (1133×744), with the
+    4th clipped by 6px. Four fit on every other iPad tested.
+
 ---
 
 ## ACCEPTED — known, deliberate, reasons recorded
@@ -604,6 +732,18 @@ disappears once scrolled to the bottom.
    and tab, which HTTP would strip and the API accepts. Unreachable in practice
    (`TokenSetup` trims), and a false rejection lands on the recoverable setup
    screen. Accepted over loosening a security-adjacent check.
+10. **A cold boot against an unreachable API holds "Loading…" for 20.5s before
+    the error card.** That is the deliberate 20s request budget, sized for a
+    Vercel cold start. Accepted, but it is the number to argue about if the
+    timeout is ever revisited — a shorter budget would show the error sooner
+    and give up on a slow-but-alive Lambda sooner.
+11. **`lastWrite` and `lastTap` are never pruned.** Correctness is safe:
+    `writeSeq` is monotonic and keys are `gen_random_uuid()` primary keys that
+    can never be reused, so an old entry can never wrongly win. It is a few
+    dozen map entries a day for the life of an unreloaded kiosk.
+12. **Repeat taps during an in-flight write are silent.** The `pending` guard
+    returns before the cooldown branch, so no toast fires. Mitigated by the
+    optimistic row having already moved, which is itself the feedback.
 
 ---
 
@@ -624,3 +764,13 @@ of the lead's). Findings were re-verified by request-sequence and UI assertions,
 or against state set up immediately before measurement. The adversarial critic
 installed an audit trigger capturing the causing SQL so the app's writes could
 never be confused with another agent's.
+
+---
+
+## The one sentence
+
+**What is most likely to make the kids stop using this:** tapping a chore and
+not being certain it registered — the tap that looks like nothing happened, the
+tick that vanishes or comes back on its own, the second tap that quietly undoes
+the first — because a board they cannot trust is one they stop walking up to,
+and every one of the seventeen FIX NOW defects in round 1 was a variation of it.

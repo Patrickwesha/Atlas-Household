@@ -385,14 +385,20 @@ button {
   list-style: none;
   margin: 0;
 }
-/* Applied only while something really is clipped below (measured in App.tsx),
- * so the last visible row fades out and reads as "this continues". Without it
- * the fold can land on a featureless band of row wash at 1.11:1 and the list
- * looks finished. */
-.list-more {
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent 100%);
-}
+/* A bottom mask-fade was tried here as a "more below" cue and REVERTED, because
+ * measurement showed it made the thing it was meant to fix worse. The mask
+ * fades the bottom of the list VIEWPORT, not the clipped part, so it dimmed the
+ * row at the fold — the one a kid can still read. At 1080x810 the fold row's
+ * title fell from 16.14:1 to 2.65:1, and at 1024x768 (the case it was written
+ * for) it made the sliver fainter still, 1.11:1 -> 1.06:1. It also dimmed
+ * fully-visible rows: a check circle's border dropped to 2.65:1, under the 3:1
+ * floor. It improved the cue at no viewport tested.
+ *
+ * A clipped list with a weak cue is a real defect and is on the FIX NEXT SLICE
+ * list (see docs/GAUNTLET-01.md). It needs a cue that adds a mark rather than
+ * subtracting contrast from the content. On the 10.2" iPad this board is built
+ * for, the fold leaves a 57.6px sliver with a visible check circle, which does
+ * read; measure the actual device before assuming it bites. */
 
 .task {
   background: var(--wash);
