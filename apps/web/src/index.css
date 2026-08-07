@@ -1,229 +1,504 @@
-* {
-  box-sizing: border-box;
-}
+/* Atlas Household kiosk.
+ *
+ * Ported from docs/design/kiosk-prototype.html. Colours, geometry and spacing
+ * come from that file; three values deliberately DIFFER from it, because the
+ * prototype's own contrast does not survive a wall-mounted iPad read from six
+ * feet. Each is marked "CONTRAST:" below with the measured ratios.
+ */
 
 :root {
-  --bg: #f1f5f9;
-  --card: #ffffff;
-  --text: #0f172a;
-  --muted: #64748b;
-  --line: #e2e8f0;
-  --danger: #b91c1c;
-  --accent: #2563eb;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --violet: #6a4cf0;
+  --violet-2: #8b4eee;
+  --magenta: #b44ce8;
+  --gold: #ffc53d;
+
+  /* CONTRAST: prototype had --green:#1FB582. A white checkmark on it measures
+   * 2.63:1 — under even the 3:1 non-text floor, on the one element that has to
+   * say "done" unmistakably. Deepened to 5.33:1. */
+  --green: #0e7a57;
+
+  --ink: #231c3b;
+
+  /* CONTRAST: prototype had --grey:#8E89A6, which is 3.34:1 on white — a fail
+   * for text at this size. Deepened to 6.15:1 on white, 5.62:1 on the done
+   * row, and still clearly muted against --ink's 14.6:1. */
+  --grey: #635e7a;
+
+  --wash: #f4f2fb;
+  --ring-empty: #e7e3f6;
+  --danger: #b3123c;
+  --pad: clamp(16px, 2vw, 30px);
+
+  font-family: 'Nunito', 'SF Pro Rounded', ui-rounded, 'Avenir Next Rounded',
+    system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
 body,
 #root {
-  margin: 0;
   height: 100%;
+  margin: 0;
   min-height: 100svh;
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
+  color: var(--ink);
+  background: linear-gradient(160deg, var(--magenta) 0%, var(--violet-2) 42%, var(--violet) 100%);
+  background-attachment: fixed;
   /* Kiosk: no accidental scroll, zoom, text-select, or tap flash. */
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
-  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+.kiosk {
+  height: 100%;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 .screen {
-  min-height: 100svh;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
-    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
-}
-
-.center {
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 1.5rem;
-}
-
-/* ---------- member tiles ---------- */
-.board-title {
-  font-size: 2.5rem;
-  margin: 0 0 24px;
-  text-align: center;
-}
-
-.tiles {
   flex: 1;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
-  align-content: center;
-}
-
-.tile {
-  border: none;
-  border-radius: 24px;
-  color: #fff;
-  padding: 32px;
-  min-height: 30vh;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  animation: screen-in 0.3s ease;
+}
+
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- shared header ---------- */
+.head {
+  flex: 0 0 auto;
+  padding: var(--pad) var(--pad) calc(var(--pad) - 4px);
+  color: #fff;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  cursor: pointer;
-  font: inherit;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-  transition: transform 0.05s ease;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  gap: 18px;
 }
-.tile:active {
-  transform: scale(0.97);
+.head h1 {
+  font-size: clamp(26px, 3.2vw, 44px);
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.01em;
 }
-.tile-disabled,
-.tile-disabled:active {
-  opacity: 0.45;
-  cursor: default;
-  box-shadow: none;
-  transform: none;
-}
-.tile-name {
-  font-size: 2.4rem;
+/* CONTRAST: the prototype had this at clamp(13px,1.3vw,18px) with opacity .82.
+ * White on the magenta end of the gradient measures 4.28:1 — under the 4.5:1
+ * bar for text this size, and the opacity made the real figure worse still.
+ * Full opacity, and sized so it is unambiguously "large text" (>=18.66px at
+ * weight 700) at every viewport, which is the honest bar for it. It carries the
+ * date and the person's progress, so bigger helps the across-the-room read too. */
+.head .sub {
+  font-size: clamp(19px, 1.9vw, 24px);
   font-weight: 700;
 }
-.tile-sub {
-  font-size: 1.4rem;
-  opacity: 0.95;
+.head .right {
+  margin-left: auto;
+  text-align: right;
+}
+.head .clock {
+  font-size: clamp(20px, 2.4vw, 34px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
-/* ---------- a member's chores ---------- */
-.chores-screen {
+/* ---------- family screen ---------- */
+.people {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: clamp(10px, 1.4vw, 22px);
+  padding: 0 var(--pad);
+  align-content: center;
+}
+.pcard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: clamp(14px, 1.8vw, 26px) 10px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  transition: transform 0.16s ease, background 0.2s ease;
+}
+.pcard:active {
+  transform: scale(0.97);
+  background: rgba(255, 255, 255, 0.2);
+}
+/* The dependent: a face and a name. No ring, no count, not a button at all. */
+.pcard-static,
+.pcard-static:active {
+  transform: none;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: default;
+}
+
+.ring {
+  position: relative;
+  width: clamp(96px, 12vw, 168px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(255, 255, 255, 0.28) 0);
+  padding: 7px;
+}
+.ring-none {
+  background: rgba(255, 255, 255, 0.28);
+}
+.ring .inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #fff;
+  display: grid;
+  place-items: center;
+}
+.ring svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.pcard .nm {
+  font-size: clamp(18px, 1.9vw, 27px);
+  font-weight: 800;
+  text-align: center;
+}
+/* CONTRAST: prototype used rgba(255,255,255,.2) here — a translucent WHITE pill
+ * under white text, which lightens the pill toward its own label and measures
+ * 3.06:1 over the magenta end of the gradient (needs 4.5:1 at this size).
+ * Darkening instead of lightening puts it at 7.2:1 or better everywhere. */
+/* SIZE: the prototype's clamp(12px,1.15vw,16px) resolves to its MINIMUM on a
+ * 1080px-wide iPad, making this the smallest text on the board — and it is the
+ * number you are meant to read from across the kitchen. A 25% render (the ~6ft
+ * equivalent) left it illegible while the ring arc still read fine. Raised so
+ * the digits survive the distance, not just the contrast check. */
+.pcard .cnt {
+  font-size: clamp(16px, 1.5vw, 20px);
+  font-weight: 700;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: rgba(35, 28, 59, 0.4);
+  text-align: center;
+}
+.pcard.clear .cnt {
+  background: var(--gold);
+  color: #4a3200;
+}
+
+/* ---------- white sheet ---------- */
+.sheet {
+  flex: 0 0 auto;
+  background: #fff;
+  border-radius: 30px 30px 0 0;
+  padding: var(--pad);
+  padding-bottom: max(var(--pad), env(safe-area-inset-bottom));
+  margin-top: var(--pad);
+  box-shadow: 0 -14px 40px rgba(40, 18, 90, 0.22);
+}
+.sheet.grow {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
-.chores-header {
+
+/* The nightly family reset. A SCHEDULE DISPLAY: it says when the reset happens,
+ * never that it happened. No checkbox, no completion state — the backend has no
+ * concept of it. */
+.strip {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 24px;
 }
-.chores-header h1 {
-  font-size: 2.6rem;
-  margin: 0;
+.strip .bell {
+  width: clamp(42px, 4.4vw, 58px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--wash);
+  display: grid;
+  place-items: center;
+  font-size: clamp(20px, 2.2vw, 28px);
+  flex: 0 0 auto;
 }
-.back-btn {
-  border: 2px solid var(--muted);
-  background: var(--card);
-  color: var(--text);
-  border-radius: 16px;
-  padding: 16px 28px;
-  font-size: 1.5rem;
-  cursor: pointer;
-  font: inherit;
+.strip .t {
+  font-size: clamp(16px, 1.7vw, 23px);
+  font-weight: 800;
 }
-.back-btn:active {
-  transform: scale(0.97);
+.strip .s {
+  font-size: clamp(13px, 1.25vw, 16px);
+  color: var(--grey);
+  font-weight: 600;
+}
+.strip .cd {
+  margin-left: auto;
+  font-size: clamp(15px, 1.7vw, 23px);
+  font-weight: 800;
+  color: var(--violet);
+  background: var(--wash);
+  padding: 10px 18px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
-.chore-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+/* ---------- person header ---------- */
+.back {
+  width: clamp(56px, 4.6vw, 64px);
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 26px;
+  display: grid;
+  place-items: center;
+}
+.back:active {
+  transform: scale(0.94);
+  background: rgba(255, 255, 255, 0.3);
+}
+.phead-av {
+  width: clamp(58px, 6vw, 84px);
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #fff;
+  overflow: hidden;
+}
+.phead-av svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.bar {
+  margin-top: 8px;
+  height: 11px;
+  width: clamp(180px, 26vw, 340px);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  overflow: hidden;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--gold);
+  transition: width 0.5s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+/* ---------- task list ---------- */
+.list {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 6px;
+  -webkit-overflow-scrolling: touch;
+  list-style: none;
+  margin: 0;
 }
-.chore {
-  width: 100%;
+.task {
+  background: var(--wash);
+  border-radius: 22px;
+  overflow: hidden;
+  flex: 0 0 auto;
+  transition: background 0.25s ease;
+}
+.task.done {
+  background: #e9f8f2;
+}
+.trow {
   display: flex;
   align-items: center;
-  gap: 20px;
-  border: 3px solid var(--line);
-  background: var(--card);
-  border-radius: 20px;
-  padding: 28px;
-  font-size: 2rem;
-  cursor: pointer;
+  gap: 18px;
+  width: 100%;
   text-align: left;
-  color: var(--text);
-  font: inherit;
-  transition: transform 0.05s ease;
+  padding: clamp(14px, 1.6vw, 20px) clamp(16px, 1.8vw, 24px);
+  min-height: 92px;
 }
-.chore:active {
-  transform: scale(0.99);
+.trow:active {
+  transform: scale(0.995);
 }
-.chore .check {
+.check {
+  width: clamp(44px, 4.2vw, 52px);
+  aspect-ratio: 1;
   flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
   border-radius: 50%;
-  border: 3px solid #cbd5e1;
+  border: 3px solid #d9d3ee;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 800;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.task.done .check {
+  background: var(--green);
+  border-color: var(--green);
+}
+.ttl {
+  font-size: clamp(17px, 1.85vw, 26px);
+  font-weight: 700;
+}
+.task.done .ttl {
+  color: var(--grey);
+}
+/* State, not a due time: it restates "this is done" in words next to the tick.
+ * There is no time here on purpose — chore_instances has a date, not a cutoff. */
+.note {
+  display: block;
+  margin-top: 4px;
+  font-size: clamp(13px, 1.25vw, 16px);
+  font-weight: 700;
+  color: var(--green);
+}
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(26px, env(safe-area-inset-bottom));
+  transform: translate(-50%, 200%);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 700;
+  font-size: clamp(15px, 1.5vw, 19px);
+  padding: 14px 14px 14px 24px;
+  border-radius: 999px;
+  box-shadow: 0 18px 44px rgba(30, 10, 70, 0.4);
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.3, 1);
+  z-index: 30;
+  max-width: calc(100vw - 32px);
+}
+.toast.show {
+  transform: translate(-50%, 0);
+}
+.toast .toast-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toast button {
+  background: #fff;
+  color: var(--ink);
+  padding: 14px 22px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: clamp(14px, 1.35vw, 17px);
+  flex: 0 0 auto;
+}
+.toast button:active {
+  transform: scale(0.95);
+}
+
+/* ---------- empty / setup / error ---------- */
+.center {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 1.8rem;
-  font-weight: 700;
-}
-.chore-done {
-  opacity: 0.6;
-}
-.chore-done .chore-title {
-  text-decoration: line-through;
-}
-.chore-done .check {
-  border: none;
-}
-.big-empty {
-  font-size: 2rem;
   text-align: center;
-  margin-top: 15vh;
+  padding: var(--pad);
 }
-
-/* ---------- setup / error cards ---------- */
 .card {
-  background: var(--card);
-  border-radius: 24px;
-  padding: 40px;
-  max-width: 520px;
+  background: #fff;
+  border-radius: 30px;
+  padding: clamp(28px, 4vw, 44px);
+  max-width: 560px;
   width: 100%;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 18px 50px rgba(40, 18, 90, 0.3);
 }
 .card h1 {
-  font-size: 2rem;
+  font-size: clamp(24px, 2.6vw, 34px);
   margin: 0 0 12px;
+  font-weight: 800;
+}
+.card p {
+  font-size: clamp(16px, 1.6vw, 20px);
+  color: var(--grey);
+  font-weight: 600;
+  margin: 0 0 8px;
 }
 .error-card h1 {
   color: var(--danger);
 }
+.loading {
+  color: #fff;
+  font-size: clamp(18px, 2vw, 26px);
+  font-weight: 700;
+  opacity: 0.9;
+}
+.big-empty {
+  text-align: center;
+  margin-top: 8vh;
+  color: var(--grey);
+  font-size: clamp(20px, 2.2vw, 30px);
+  font-weight: 700;
+}
 .token-input {
   width: 100%;
-  font-size: 1.5rem;
-  padding: 18px;
-  border: 2px solid #cbd5e1;
-  border-radius: 14px;
-  margin: 20px 0;
   font: inherit;
+  font-size: clamp(16px, 1.6vw, 20px);
+  padding: 18px;
+  border: 2px solid #d9d3ee;
+  border-radius: 16px;
+  margin: 20px 0;
 }
 .big-btn {
   width: 100%;
-  font-size: 1.5rem;
+  font: inherit;
+  font-size: clamp(16px, 1.6vw, 20px);
   padding: 20px;
-  border: none;
-  border-radius: 14px;
-  background: var(--accent);
+  border-radius: 16px;
+  background: var(--violet);
   color: #fff;
-  cursor: pointer;
-  font-weight: 600;
-  font-family: inherit;
+  font-weight: 800;
 }
 .big-btn:disabled {
   opacity: 0.5;
@@ -233,7 +508,9 @@ body {
   transform: scale(0.98);
 }
 
-/* ---------- offline banner ---------- */
+/* Stale board: the last good data is still on screen, so say so rather than
+ * letting it read as current. Distinct from the full error card, which means
+ * "nothing loaded at all". */
 .offline-banner {
   position: fixed;
   top: 0;
@@ -243,6 +520,27 @@ body {
   color: #fff;
   text-align: center;
   padding: 14px;
-  font-size: 1.2rem;
-  z-index: 10;
+  padding-top: max(14px, env(safe-area-inset-top));
+  font-size: clamp(14px, 1.4vw, 18px);
+  font-weight: 700;
+  z-index: 40;
+}
+
+@media (max-width: 900px) {
+  .people {
+    grid-template-columns: repeat(3, 1fr);
+    align-content: start;
+    overflow-y: auto;
+    padding-bottom: 12px;
+  }
+  .head {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

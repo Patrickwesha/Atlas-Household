@@ -9,7 +9,21 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#2563eb" />
+    <meta name="theme-color" content="#8b4eee" />
+    <!--
+      Nunito from the Google Fonts CDN, matching the design prototype.
+      display=swap means text paints immediately in the fallback rather than
+      waiting on the network: this kiosk hangs on a wall, and if the wifi is
+      down the board must still be readable. The fallback stack in index.css
+      resolves to a rounded system face on iPadOS ('SF Pro Rounded' / ui-rounded),
+      so a dead CDN costs the typeface, not the layout.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Atlas" />
