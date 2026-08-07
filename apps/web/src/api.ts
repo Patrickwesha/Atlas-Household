@@ -64,8 +64,23 @@ export class NetworkError extends Error {
   }
 }
 
+// A header value must be sendable ASCII. A token pasted with a non-breaking
+// space or a zero-width space (both survive a copy out of chat or email) makes
+// fetch() throw before any request leaves the device — which used to surface as
+// NetworkError, i.e. "Can't reach the server", forever: no response means no
+// 401, and 401 is the only thing that clears a bad token. The kiosk could not
+// be recovered from the iPad. Treat an unsendable token as what it is — a bad
+// token — so it takes the same path as any other rejected one.
+function isSendable(token: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return /^[\x21-\x7e]+$/.test(token)
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken()
+  if (token !== null && !isSendable(token)) {
+    throw new ApiError(401, 'Stored device token contains characters that cannot be sent')
+  }
   let res: Response
   try {
     res = await fetch(`${BASE}${path}`, {

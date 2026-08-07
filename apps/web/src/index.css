@@ -162,14 +162,37 @@ button {
   transform: scale(0.97);
   background: rgba(255, 255, 255, 0.2);
 }
-/* The dependent: a face and a name. No ring, no count, not a button at all. */
+/* The dependent: a face and a name. No ring, no count, not a button at all.
+ *
+ * It used to differ from a tappable card by 1.11:1 — same size, same border,
+ * same ring, same typography — so it read as a button that does nothing, which
+ * is what a frozen app looks like. It now drops the card fill and border
+ * entirely and sits smaller, so it reads as a label in the row rather than a
+ * fifth button. Still a face and a name, still no count, still nothing to press. */
 .pcard-static,
 .pcard-static:active {
   transform: none;
-  background: rgba(255, 255, 255, 0.08);
+  background: none;
+  border: none;
   cursor: default;
+  align-self: center;
+  opacity: 0.75;
+}
+.pcard-static .ring {
+  width: clamp(66px, 8vw, 112px);
+}
+.pcard-static .nm {
+  font-size: clamp(15px, 1.5vw, 21px);
+  font-weight: 700;
 }
 
+/* CONTRAST: the prototype's track was rgba(255,255,255,.28) — a LIGHT track
+ * under a light gold arc, measuring 1.50-1.71:1 against a 3:1 bar for a graphic
+ * you must read to understand the screen. The ring is the largest thing on the
+ * board and it was carrying almost no information; it failed worse under glare
+ * and off-axis. Darkening the track instead puts the arc at 4.3:1 or better.
+ * The arc is also thickened (7px -> 11px), because at 7px on a 130px disc it
+ * subtends ~2.7 arc-minutes at six feet, which is at the limit of acuity. */
 .ring {
   position: relative;
   width: clamp(96px, 12vw, 168px);
@@ -177,11 +200,17 @@ button {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(255, 255, 255, 0.28) 0);
-  padding: 7px;
+  background: conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(35, 28, 59, 0.45) 0);
+  padding: 11px;
 }
+/* The dependent has NO progress ring — not an empty one. An empty ring and a
+ * zero-progress ring used to render identically (1.12:1 apart), so on any
+ * morning, when every kid is at 0%, the one card that is not a button looked
+ * exactly like the four that are. No track here at all: the dependent's avatar
+ * sits on the card, which is visibly not the same object as a ring. */
 .ring-none {
-  background: rgba(255, 255, 255, 0.28);
+  background: none;
+  padding: 0;
 }
 .ring .inner {
   width: 100%;
@@ -235,12 +264,19 @@ button {
   margin-top: var(--pad);
   box-shadow: 0 -14px 40px rgba(40, 18, 90, 0.22);
 }
+/* The bottom padding permanently RESERVES the toast's strip. The toast is
+ * position:fixed, so without this it lands on top of the chore list — and the
+ * Undo button's box fell entirely inside the bottom row's box, meaning a tap
+ * aimed at that chore hit Undo and reversed the previous completion instead.
+ * Reserved rather than added-while-showing on purpose: shifting the list under
+ * a finger mid-tap is its own hazard. */
 .sheet.grow {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding-bottom: 116px;
 }
 
 /* The nightly family reset. A SCHEDULE DISPLAY: it says when the reset happens,
@@ -358,15 +394,27 @@ button {
   padding: clamp(14px, 1.6vw, 20px) clamp(16px, 1.8vw, 24px);
   min-height: 92px;
 }
+/* The most-pressed control in the app had scale(.995) — a 2px nudge on a 990px
+ * row, invisible from standing height, while .pcard used scale(.97) PLUS a
+ * background change. With wet hands and a glance, the press must be obvious on
+ * its own, because it is the only feedback that is guaranteed to happen: the
+ * server round-trip may fail. */
 .trow:active {
-  transform: scale(0.995);
+  transform: scale(0.98);
+  background: #e4e0f4;
 }
+.task.done .trow:active {
+  background: #d7f0e5;
+}
+/* CONTRAST: the empty circle is the only "tap me" mark on a chore row, and the
+ * prototype's #D9D3EE border measured 1.31:1 on the row — against a 3:1 bar for
+ * a control boundary, and dropping to 1.14:1 under glare. Darkened to 3.47:1. */
 .check {
   width: clamp(44px, 4.2vw, 52px);
   aspect-ratio: 1;
   flex: 0 0 auto;
   border-radius: 50%;
-  border: 3px solid #d9d3ee;
+  border: 3px solid #847bb2;
   background: #fff;
   display: grid;
   place-items: center;
@@ -415,9 +463,21 @@ button {
   transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.3, 1);
   z-index: 30;
   max-width: calc(100vw - 32px);
+  /* Only the Undo button is interactive. The toast body used to swallow taps
+   * aimed at whatever was behind it, which looked exactly like a dead app. */
+  pointer-events: none;
 }
 .toast.show {
   transform: translate(-50%, 0);
+}
+.toast button {
+  pointer-events: auto;
+}
+/* A failed tap now says so. It used to change nothing on screen at all — the
+ * row reverted before it ever painted, so pressing the button and pressing a
+ * picture of the button were pixel-identical. */
+.toast-error {
+  background: var(--danger);
 }
 .toast .toast-text {
   overflow: hidden;
@@ -511,11 +571,13 @@ button {
 /* Stale board: the last good data is still on screen, so say so rather than
  * letting it read as current. Distinct from the full error card, which means
  * "nothing loaded at all". */
+/* IN FLOW, not fixed. As a fixed overlay it landed on the header exactly when
+ * things were already going wrong: it covered 61% of the person's name and the
+ * top 11px of the Back button — and won the hit test there, shrinking the only
+ * way off the person screen from 56px to 45px. Pushing the layout down instead
+ * costs a strip of gradient and covers nothing. */
 .offline-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  flex: 0 0 auto;
   background: var(--danger);
   color: #fff;
   text-align: center;
@@ -523,7 +585,6 @@ button {
   padding-top: max(14px, env(safe-area-inset-top));
   font-size: clamp(14px, 1.4vw, 18px);
   font-weight: 700;
-  z-index: 40;
 }
 
 @media (max-width: 900px) {

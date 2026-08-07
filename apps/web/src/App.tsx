@@ -25,10 +25,23 @@ const IDLE_MS = 60_000
 const TOAST_MS = 6_000
 // The clock only shows hours and minutes, so a 10s tick is plenty.
 const TICK_MS = 10_000
+// How long a chore row ignores a repeat tap after it moves. Deliberately longer
+// than an accidental double tap and than a "did that register?" re-tap. The
+// deliberate way to reverse a completion inside this window is the Undo button,
+// which is on screen for TOAST_MS and is a bigger, clearer target than the row.
+const TAP_COOLDOWN_MS = 2_000
 
 interface ToastState {
   instanceId: string
+  // Whose screen produced this toast. The toast is global, so without this it
+  // survived every navigation: complete a chore, tap Back, and a live Undo for
+  // YOUR chore rode along onto the next kid's screen, where one tap erased it.
+  memberId: string
   title: string
+  // 'done' offers Undo. 'undone' confirms the destructive direction, which used
+  // to happen in complete silence. 'error' is the one thing a failed tap never
+  // had: any visible acknowledgement at all.
+  kind: 'done' | 'undone' | 'error'
 }
 
 interface Stats {
@@ -54,23 +67,50 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [now, setNow] = useState<Date>(() => new Date())
   const [toast, setToast] = useState<ToastState | null>(null)
+  const [retrying, setRetrying] = useState(false)
 
-  const refresh = useCallback(async () => {
+  // Instances with a tap in flight — stops a background poll from overwriting a
+  // row mid-tap, and stops a second tap racing the first.
+  const pending = useRef<Set<string>>(new Set())
+  // When each row was last acted on. An in-flight lock alone does NOT stop a
+  // double tap: the API answers in milliseconds, so the second tap of a double
+  // tap arrives after the first has settled and reads as a deliberate toggle —
+  // which un-does the chore. Measured reversing at every gap from 60ms to
+  // 1.2s. A row therefore ignores repeat taps for a moment after it moves.
+  const lastTap = useRef<Map<string, number>>(new Map())
+
+  // Returns the board it fetched, so a caller can reconcile against server
+  // truth rather than assuming. null means the fetch failed.
+  const refresh = useCallback(async (): Promise<Board | null> => {
     try {
       const b = await getBoard()
-      setBoard(b)
+      // A poll landing between a tap and its response used to revert the row on
+      // screen — the tick vanished under the kid's finger and came back a
+      // second later. Keep the optimistic row for anything still in flight.
+      setBoard((cur) => {
+        if (cur === null || pending.current.size === 0) return b
+        return {
+          ...b,
+          instances: b.instances.map((i) => {
+            if (!pending.current.has(i.id)) return i
+            return cur.instances.find((c) => c.id === i.id) ?? i
+          }),
+        }
+      })
       setError(null)
+      return b
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         clearToken()
         setHasToken(false)
-        return
+        return null
       }
       setError(
         err instanceof NetworkError
           ? "Can't reach the server."
           : 'Something went wrong loading the board.',
       )
+      return null
     }
   }, [])
 
@@ -148,6 +188,25 @@ export default function App() {
   // the server's row, and roll back visibly if the call fails.
   const toggle = useCallback(
     async (instance: Instance, member: Member) => {
+      if (pending.current.has(instance.id)) return
+
+      // Inside the cooldown, re-assert what the row already says instead of
+      // reversing it. Not silent: a swallowed tap is what "broken" looks like,
+      // so this re-shows the confirmation — with Undo, if it is done — which is
+      // the answer to the question the second tap was asking.
+      const tappedAt = Date.now()
+      if (tappedAt - (lastTap.current.get(instance.id) ?? 0) < TAP_COOLDOWN_MS) {
+        setToast({
+          instanceId: instance.id,
+          memberId: member.id,
+          title: instance.title,
+          kind: instance.completed_at !== null ? 'done' : 'undone',
+        })
+        return
+      }
+      lastTap.current.set(instance.id, tappedAt)
+      pending.current.add(instance.id)
+
       const wasDone = instance.completed_at !== null
       applyInstance(
         wasDone
@@ -159,31 +218,69 @@ export default function App() {
           ? await uncompleteInstance(instance.id)
           : await completeInstance(instance.id, member.id)
         applyInstance(updated)
-        // Only confirm once the server has actually taken it — the row already
-        // went green on tap, so the toast is the honest part.
-        if (wasDone) {
-          setToast((t) => (t?.instanceId === instance.id ? null : t))
-        } else {
-          setToast({ instanceId: updated.id, title: updated.title })
-        }
+        setToast({
+          instanceId: updated.id,
+          memberId: member.id,
+          title: updated.title,
+          kind: wasDone ? 'undone' : 'done',
+        })
       } catch {
+        // Roll back, then ask the server what is actually true. The rollback
+        // alone is a GUESS: when the write commits and only the response is
+        // lost — the ordinary shape of a mid-tap wifi drop — reverting shows
+        // the opposite of the database as fact.
         applyInstance(instance)
+        // Leave the pending set BEFORE reconciling, or refresh() will helpfully
+        // preserve the row we just rolled back and defeat its own purpose.
+        pending.current.delete(instance.id)
+        const reconciled = await refresh()
+        const row = reconciled?.instances.find((i) => i.id === instance.id) ?? null
+        // Only cry failure if the write really did not happen. Saying
+        // "Couldn't save — tap it again" over a row the refetch just painted
+        // green is worse than saying nothing: a kid who obeys it un-does the
+        // chore that actually saved.
+        const saved = row !== null && (row.completed_at !== null) === !wasDone
+        setToast({
+          instanceId: instance.id,
+          memberId: member.id,
+          title: row?.title ?? instance.title,
+          kind: saved ? (wasDone ? 'undone' : 'done') : 'error',
+        })
+      } finally {
+        pending.current.delete(instance.id)
       }
     },
-    [applyInstance],
+    [applyInstance, refresh],
   )
 
   const undo = useCallback(
     async (instance: Instance) => {
+      if (pending.current.has(instance.id)) return
+      pending.current.add(instance.id)
+      // Undo is the deliberate reversal, so it also clears the row's cooldown —
+      // re-completing straight afterwards must work on the very next tap.
+      lastTap.current.delete(instance.id)
       setToast(null)
       applyInstance({ ...instance, completed_at: null, completed_by: null })
       try {
         applyInstance(await uncompleteInstance(instance.id))
       } catch {
         applyInstance(instance)
+        pending.current.delete(instance.id)
+        const reconciled = await refresh()
+        const row = reconciled?.instances.find((i) => i.id === instance.id) ?? null
+        const cleared = row !== null && row.completed_at === null
+        setToast({
+          instanceId: instance.id,
+          memberId: instance.assignee_id,
+          title: row?.title ?? instance.title,
+          kind: cleared ? 'undone' : 'error',
+        })
+      } finally {
+        pending.current.delete(instance.id)
       }
     },
-    [applyInstance],
+    [applyInstance, refresh],
   )
 
   if (!hasToken) {
@@ -211,8 +308,19 @@ export default function App() {
             <div className="card error-card">
               <h1>Can't load the board</h1>
               <p>{error}</p>
-              <button className="big-btn" onClick={() => void refresh()}>
-                Try again
+              <p>Tell a grown-up if it keeps saying this.</p>
+              {/* The retry used to change nothing on screen — same text before,
+                  during and after — so the only button on the screen looked
+                  dead and kids hammered it. */}
+              <button
+                className="big-btn"
+                disabled={retrying}
+                onClick={() => {
+                  setRetrying(true)
+                  void refresh().finally(() => window.setTimeout(() => setRetrying(false), 600))
+                }}
+              >
+                {retrying ? 'Trying…' : 'Try again'}
               </button>
             </div>
           </div>
@@ -226,18 +334,18 @@ export default function App() {
   }
 
   const selected = selectedId ? board.members.find((m) => m.id === selectedId) ?? null : null
-  const toastInstance = toast
-    ? board.instances.find((i) => i.id === toast.instanceId) ?? null
+  // A toast belongs to the screen that raised it. Off that screen it is not
+  // shown and its Undo is unreachable — otherwise Undo for one kid's chore
+  // rides onto the next kid's screen (or the family screen, if the response
+  // lands after Back was tapped) and one curious press erases their work.
+  const visibleToast = toast !== null && toast.memberId === selected?.id ? toast : null
+  const toastInstance = visibleToast
+    ? board.instances.find((i) => i.id === visibleToast.instanceId) ?? null
     : null
 
   return (
     <>
-      {error && (
-        <div className="offline-banner" role="alert">
-          ⚠ {error} Showing the last board that loaded.
-        </div>
-      )}
-      <Shell>
+      <Shell banner={error ? `⚠ ${error} Showing the last board that loaded.` : null}>
         {selected ? (
           <PersonScreen
             member={selected}
@@ -255,8 +363,12 @@ export default function App() {
         )}
       </Shell>
       <Toast
-        toast={toast}
-        canUndo={toastInstance !== null && toastInstance.completed_at !== null}
+        toast={visibleToast}
+        canUndo={
+          visibleToast?.kind === 'done' &&
+          toastInstance !== null &&
+          toastInstance.completed_at !== null
+        }
         onUndo={() => {
           if (toastInstance) void undo(toastInstance)
         }}
@@ -265,8 +377,19 @@ export default function App() {
   )
 }
 
-function Shell({ children }: { children: ReactNode }) {
-  return <div className="kiosk">{children}</div>
+function Shell({ banner, children }: { banner?: string | null; children: ReactNode }) {
+  return (
+    <div className="kiosk">
+      {/* In flow, above everything. As a fixed overlay it covered the person's
+          name and the top of the Back button, and won the hit test there. */}
+      {banner ? (
+        <div className="offline-banner" role="alert">
+          {banner}
+        </div>
+      ) : null}
+      {children}
+    </div>
+  )
 }
 
 function TokenSetup({ onSaved }: { onSaved: (token: string) => void }) {
@@ -436,7 +559,10 @@ function PersonScreen({
 
       <div className="sheet grow">
         {chores.length === 0 ? (
-          <p className="big-empty">No chores today 🎉</p>
+          // No confetti. An empty list is almost never "you finished" — a
+          // finished list still shows its rows, ticked. Empty means nothing was
+          // put on the board, which is not an achievement to celebrate.
+          <p className="big-empty">Nothing on your list today.</p>
         ) : (
           // Server order (by title) is kept even as rows are completed. Rows must
           // never reshuffle under a finger mid-tap.
@@ -462,6 +588,12 @@ function PersonScreen({
   )
 }
 
+const TOAST_TEXT: Record<ToastState['kind'], (title: string) => string> = {
+  done: (t) => `${t} — done`,
+  undone: (t) => `${t} — not done any more`,
+  error: (t) => `Couldn't save "${t}". Tap it again.`,
+}
+
 function Toast({
   toast,
   canUndo,
@@ -472,8 +604,12 @@ function Toast({
   onUndo: () => void
 }) {
   return (
-    <div className={`toast${toast ? ' show' : ''}`} role="status" aria-live="polite">
-      <span className="toast-text">{toast ? `${toast.title} — done` : ''}</span>
+    <div
+      className={`toast${toast ? ' show' : ''}${toast?.kind === 'error' ? ' toast-error' : ''}`}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="toast-text">{toast ? TOAST_TEXT[toast.kind](toast.title) : ''}</span>
       {canUndo && <button onClick={onUndo}>Undo</button>}
     </div>
   )
