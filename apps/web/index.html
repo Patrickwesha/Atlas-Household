@@ -9,10 +9,29 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#2563eb" />
+    <meta name="theme-color" content="#6d28d9" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Atlas" />
+
+    <!--
+      Nunito, loaded so it can NEVER hold up the first paint. A normal
+      stylesheet link is render-blocking: if the kitchen wifi drops or the CDN
+      is unreachable, the wall iPad shows a blank screen until the request
+      times out. media="print" makes the browser fetch it at low priority
+      without blocking, and onload promotes it to the real stylesheet. Miss the
+      font and the board still draws instantly in the ui-rounded fallback
+      (SF Pro Rounded on iPadOS) — see --font in index.css.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+
     <title>Atlas Household</title>
   </head>
   <body>

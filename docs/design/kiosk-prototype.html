@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Atlas Household — kiosk design reference</title>
+
+    <!--
+      DESIGN REFERENCE. Static, hardcoded, placeholder data. Not built, not
+      deployed, not imported by the app — open it in a browser to see the
+      kiosk's visual language on one page.
+
+      PROVENANCE: the original mock did not survive the hand-off, so this file
+      was reconstructed from the written design brief and then kept in step
+      with what apps/web actually ships. Where the two ever disagree,
+      apps/web/src/index.css is the truth and this file is stale.
+
+      Names here are the placeholders from apps/api/seed.example.json. No real
+      family data — this repo is public.
+    -->
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+
+    <style>
+      * { box-sizing: border-box; }
+
+      :root {
+        --font: 'Nunito', ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Varela Round',
+          system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        --grad: linear-gradient(150deg, #4c1d95 0%, #6d28d9 45%, #9333ea 100%);
+        --ink: #1f1436;
+        --muted: #5b5175;
+        --paper: #f3f1f9;
+        --line: #ded8ee;
+        --green: #15803d;
+        --green-tint: #eaf7ee;
+        --green-line: #7fc593;
+        --danger: #b3261e;
+        --lav: #f4f0ff;
+        --lav-line: #ddd2f7;
+        font-family: var(--font);
+      }
+
+      body {
+        margin: 0;
+        background: #2c1065;
+        color: var(--ink);
+        padding: 40px 24px 80px;
+      }
+
+      .doc { max-width: 1120px; margin: 0 auto; }
+
+      .doc h1 { color: #fff; font-size: 2rem; margin: 0 0 6px; }
+      .doc .lede { color: #d3c4f5; font-weight: 600; margin: 0 0 8px; max-width: 74ch; line-height: 1.5; }
+      .doc h2 {
+        color: #fff; font-size: 1.15rem; margin: 44px 0 4px;
+        text-transform: uppercase; letter-spacing: 0.08em;
+      }
+      .doc .note { color: #b9a6e6; font-weight: 600; font-size: 0.92rem; margin: 0 0 14px; max-width: 74ch; line-height: 1.5; }
+      .doc a { color: #d8c9ff; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+
+      /* A stand-in for the iPad, so the screens below are seen at kiosk scale. */
+      .device {
+        width: 100%; aspect-ratio: 4 / 3; display: flex;
+        background: var(--grad); border-radius: 18px; padding: 14px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+      }
+
+      .sheet {
+        flex: 1; min-height: 0; display: flex; flex-direction: column;
+        background: #fff; border-radius: 34px; padding: 20px 26px;
+        box-shadow: 0 18px 50px rgba(23, 8, 56, 0.32); overflow: hidden;
+      }
+
+      /* ---- header ---- */
+      .top-bar, .chores-header {
+        display: flex; align-items: center; gap: 16px; flex: 0 0 auto; margin-bottom: 16px;
+      }
+      /* Explicit colour: the page's own `h1` rule is white for the dark doc
+         chrome, and these two h1s live inside the white sheet. */
+      .household, .chores-name {
+        margin: 0; font-size: 1.9rem; font-weight: 800; letter-spacing: -0.01em;
+        color: var(--ink);
+      }
+      .clock { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+      .clock-time { font-size: 1.9rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+      .clock-date { font-size: 1.05rem; font-weight: 700; color: var(--muted); }
+
+      /* ---- tiles ---- */
+      .tiles {
+        flex: 1; min-height: 0; display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        grid-auto-rows: minmax(200px, 62%);
+        gap: 14px; align-content: center;
+      }
+      .tile {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 10px; border: 4px solid var(--line); border-radius: 26px;
+        padding: 14px 8px; background: var(--paper); color: var(--ink); font: inherit;
+      }
+      .tile-complete { background: var(--green-tint); border-color: var(--green); }
+      .tile-static { border-style: dashed; }
+      .tile-name {
+        font-size: 1.5rem; font-weight: 800; line-height: 1.12; text-align: center;
+      }
+      .pill {
+        display: inline-block; padding: 0.3em 0.85em; border-radius: 999px;
+        font-size: 1.15rem; font-weight: 800; white-space: nowrap;
+      }
+      .pill-todo { background: var(--ink); color: #fff; }
+      .pill-done { background: var(--green); color: #fff; }
+      .pill-neutral { background: var(--paper); color: var(--muted); border: 2px solid var(--line); }
+
+      /* ---- avatar + ring ---- */
+      .ring { position: relative; width: 112px; aspect-ratio: 1; display: grid; place-items: center; }
+      .ring-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+      .avatar { display: block; border-radius: 50%; }
+      .avatar-in-ring { width: 66%; height: 66%; }
+      .avatar-tile { width: 96px; aspect-ratio: 1; }
+      .avatar-head { width: 64px; aspect-ratio: 1; }
+      .ring-badge {
+        position: absolute; right: 2%; bottom: 2%; width: 30%; height: 30%;
+        border-radius: 50%; background: var(--green); border: 3px solid #fff;
+        display: grid; place-items: center;
+      }
+
+      /* ---- 8pm strip ---- */
+      .reset-strip {
+        flex: 0 0 auto; margin-top: 14px; display: flex; align-items: center; flex-wrap: wrap;
+        gap: 14px; background: var(--lav); border: 2px solid var(--lav-line);
+        border-radius: 18px; padding: 13px 20px;
+      }
+      .reset-icon { color: #6d28d9; flex: 0 0 auto; }
+      .reset-time { font-weight: 800; font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+      .reset-text { flex: 1 1 240px; font-size: 1.15rem; font-weight: 600; color: var(--muted); }
+      .reset-text strong { color: var(--ink); font-weight: 800; }
+      .reset-tag {
+        margin-left: auto; background: #fff; border: 2px solid var(--lav-line);
+        border-radius: 999px; padding: 0.25em 0.8em; font-size: 0.82rem; font-weight: 800;
+        color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em;
+      }
+
+      /* ---- chores ---- */
+      .back-btn {
+        border: 3px solid var(--line); background: #fff; color: var(--ink);
+        border-radius: 18px; padding: 0 22px; min-height: 64px;
+        font: inherit; font-size: 1.2rem; font-weight: 800;
+      }
+      .progress { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+      .progress-track {
+        flex: 1; height: 18px; border-radius: 999px; background: var(--paper);
+        border: 2px solid var(--line); overflow: hidden;
+      }
+      .progress-fill { height: 100%; border-radius: 999px; }
+      .progress-label { font-size: 1.2rem; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+      .chore-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+      .chore {
+        width: 100%; display: flex; align-items: center; gap: 20px;
+        border: 3px solid var(--line); background: #fff; border-radius: 22px;
+        padding: 20px 24px; min-height: 96px; font: inherit; font-size: 1.7rem;
+        font-weight: 700; text-align: left; color: var(--ink);
+      }
+      .chore .check {
+        flex: 0 0 auto; width: 56px; height: 56px; border-radius: 50%;
+        border: 4px solid #b9b0d4; background: #fff; display: grid; place-items: center;
+      }
+      .chore-done { background: var(--green-tint); border-color: var(--green-line); }
+      .chore-done .check { background: var(--green); border-color: var(--green); }
+      .chore-done .chore-title { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 3px; }
+
+      /* ---- toast ---- */
+      .toast-row { margin-top: auto; display: flex; justify-content: center; padding-top: 20px; }
+      .toast {
+        display: flex; align-items: center; gap: 20px; background: var(--ink); color: #fff;
+        border-radius: 20px; padding: 14px 16px 14px 26px; box-shadow: 0 16px 44px rgba(15, 5, 40, 0.5);
+      }
+      .toast-error { background: var(--danger); }
+      .toast-text { font-size: 1.25rem; font-weight: 700; }
+      .toast-btn {
+        min-height: 58px; min-width: 116px; border: 3px solid rgba(255, 255, 255, 0.7);
+        background: transparent; color: #fff; border-radius: 15px; padding: 0 22px;
+        font: inherit; font-size: 1.15rem; font-weight: 800;
+      }
+
+      /* ---- swatches ---- */
+      .swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+      .sw {
+        border-radius: 12px; padding: 12px 16px; font-size: 0.85rem; font-weight: 800;
+        min-width: 132px; border: 2px solid rgba(0, 0, 0, 0.12);
+      }
+      .sw small { display: block; font-weight: 600; opacity: 0.85; font-family: ui-monospace, monospace; }
+
+      /* ---- excluded list ---- */
+      .excluded {
+        background: #fff; border-radius: 18px; padding: 22px 26px; margin-top: 10px;
+      }
+      .excluded ul { margin: 0; padding-left: 20px; }
+      .excluded li { margin-bottom: 12px; line-height: 1.5; font-weight: 600; }
+      .excluded b { color: var(--danger); }
+    </style>
+  </head>
+
+  <body>
+    <div class="doc">
+      <h1>Atlas Household — kiosk design reference</h1>
+      <p class="lede">
+        The visual language of the wall-mounted kitchen iPad, on one static page.
+        Hardcoded placeholder data. The shipped implementation lives in
+        <code>apps/web/src/</code>; if the two disagree, the app is right.
+      </p>
+      <p class="note">
+        Reconstructed from the written design brief and kept in step with what
+        <code>apps/web</code> ships. Names are the placeholders from
+        <code>apps/api/seed.example.json</code>.
+      </p>
+
+      <!-- ══════════════ FAMILY SCREEN ══════════════ -->
+      <h2>Screen 1 — family</h2>
+      <p class="note">
+        Five tiles, one row. Ring = today's done / total. Green means finished and
+        nothing else in the grid is allowed to be green, so a member whose own
+        colour is green never reads as done. The dependent shows a face and a
+        name only: no count, no ring, not a button.
+      </p>
+
+      <div class="device">
+        <div class="sheet">
+          <div class="top-bar">
+            <h1 class="household">The Example Family</h1>
+            <div class="clock">
+              <span class="clock-time">4:15 PM</span>
+              <span class="clock-date">Friday, August 7</span>
+            </div>
+          </div>
+
+          <div class="tiles">
+            <!-- complete -->
+            <div class="tile tile-complete">
+              <div class="ring">
+                <svg viewBox="0 0 100 100" class="ring-svg" aria-hidden="true">
+                  <circle cx="50" cy="50" r="46" fill="none" stroke="#d4e2fb" stroke-width="8" />
+                  <circle cx="50" cy="50" r="46" fill="none" stroke="#15803d" stroke-width="8"
+                    stroke-linecap="round" stroke-dasharray="289.03 289.03" transform="rotate(-90 50 50)" />
+                </svg>
+                <svg viewBox="0 0 100 100" class="avatar avatar-in-ring" aria-hidden="true">
+                  <circle cx="50" cy="50" r="50" fill="#e9f0fd" />
+                  <circle cx="50" cy="36" r="27" fill="#2563EB" />
+                  <path d="M14 100c0-17 16-27 36-27s36 10 36 27z" fill="#2563EB" />
+                  <rect x="43" y="56" width="14" height="16" rx="6" fill="#a7c4f5" />
+                  <circle cx="50" cy="42" r="23" fill="#a7c4f5" />
+                  <circle cx="42" cy="41" r="3.2" fill="#18408e" />
+                  <circle cx="58" cy="41" r="3.2" fill="#18408e" />
+                  <path d="M42 50q8 7 16 0" stroke="#18408e" stroke-width="3.2" stroke-linecap="round" fill="none" />
+                </svg>
+                <span class="ring-badge">
+                  <svg viewBox="0 0 24 24" width="60%" height="60%">
+                    <path d="M5 13l4.5 4.5L19 7" fill="none" stroke="#fff" stroke-width="3.4"
+                      stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+              </div>
+              <span class="tile-name">Adult One</span>
+              <span class="pill pill-done">All done</span>
+            </div>
+
+            <!-- half done -->
+            <div class="tile" style="border-color: #f0a8cd">
+              <div class="ring">
+                <svg viewBox="0 0 100 100" class="ring-svg" aria-hidden="true">
+                  <circle cx="50" cy="50" r="46" fill="none" stroke="#f8d3e7" stroke-width="8" />
+                  <circle cx="50" cy="50" r="46" fill="none" stroke="#DB2777" stroke-width="8"
+                    stroke-linecap="round" stroke-dasharray="144.5 289.03" transform="rotate(-90 50 50)" />
+                </svg>
+                <svg viewBox="0 0 100 100" class="avatar avatar-in-ring" aria-hidden="true">
+                  <circle cx="50" cy="50" r="50" fill="#fbeaf3" />
+                  <rect x="21" y="30" width="58" height="52" rx="22" fill="#DB2777" />
+                  <circle cx="50" cy="36" r="27" fill="#DB2777" />
+                  <path d="M14 100c0-17 16-27 36-27s36 10 36 27z" fill="#DB2777" />
+                  <rect x="43" y="56" width="14" height="16" rx="6" fill="#eea1c8" />
+                  <circle cx="50" cy="42" r="23" fill="#eea1c8" />
+                  <circle cx="42" cy="41" r="3.2" fill="#8e1a4d" />
+                  <circle cx="58" cy="41" r="3.2" fill="#8e1a4d" />
+                  <path d="M42 50q8 7 16 0" stroke="#8e1a4d" stroke-width="3.2" stroke-linecap="round" fill="none" />
+                </svg>
+              </div>
+              <span class="tile-name">Adult Two</span>
+              <span class="pill pill-todo">1 to do</span>
+            </div>
+
+            <!-- green member, NOT done: proves green-means-done still reads -->
+            <div class="tile" style="border-color: #8bd8a5">
+              <div class="ring">
+                <svg viewBox="0 0 100 100" class="ring-svg" aria-hidden="true">
+                  <circle cx="50" cy="50" r="46" fill="none" stroke="#d0eeda" stroke-width="8" />
+                  <circle cx="50" cy="50" r="46" fill="none" stroke="#16A34A" stroke-width="8"
+                    stroke-linecap="round" stroke-dasharray="96.3 289.03" transform="rotate(-90 50 50)" />
+                </svg>
+                <svg viewBox="0 0 100 100" class="avatar avatar-in-ring" aria-hidden="true">
+                  <circle cx="50" cy="50" r="50" fill="#e7f6ec" />
+                  <circle cx="50" cy="12" r="9" fill="#16A34A" />
+                  <circle cx="50" cy="36" r="27" fill="#16A34A" />
+                  <path d="M14 100c0-17 16-27 36-27s36 10 36 27z" fill="#16A34A" />
+                  <rect x="43" y="56" width="14" height="16" rx="6" fill="#96dcaf" />
+                  <circle cx="50" cy="42" r="23" fill="#96dcaf" />
+                  <circle cx="42" cy="41" r="3.2" fill="#0e6a30" />
+                  <circle cx="58" cy="41" r="3.2" fill="#0e6a30" />
+                  <path d="M42 50q8 7 16 0" stroke="#0e6a30" stroke-width="3.2" stroke-linecap="round" fill="none" />
+                </svg>
+              </div>
+              <span class="tile-name">Kid One</span>
+              <span class="pill pill-todo">2 to do</span>
+            </div>
+
+            <!-- nothing assigned today -->
+            <div class="tile" style="border-color: #f6b98c">
+              <div class="ring">
+                <svg viewBox="0 0 100 100" class="ring-svg" aria-hidden="true">
+                  <circle cx="50" cy="50" r="46" fill="none" stroke="#fbdcc7" stroke-width="8" />
+                </svg>
+                <svg viewBox="0 0 100 100" class="avatar avatar-in-ring" aria-hidden="true">
+                  <circle cx="50" cy="50" r="50" fill="#fdefe4" />
+                  <circle cx="50" cy="34" r="27" fill="#EA580C" />
+                  <circle cx="30" cy="28" r="12" fill="#EA580C" />
+                  <circle cx="50" cy="19" r="13" fill="#EA580C" />
+                  <circle cx="70" cy="28" r="12" fill="#EA580C" />
+                  <path d="M14 100c0-17 16-27 36-27s36 10 36 27z" fill="#EA580C" />
+                  <rect x="43" y="56" width="14" height="16" rx="6" fill="#f5b184" />
+                  <circle cx="50" cy="42" r="23" fill="#f5b184" />
+                  <circle cx="42" cy="41" r="3.2" fill="#983908" />
+                  <circle cx="58" cy="41" r="3.2" fill="#983908" />
+                  <path d="M42 50q8 7 16 0" stroke="#983908" stroke-width="3.2" stroke-linecap="round" fill="none" />
+                </svg>
+              </div>
+              <span class="tile-name">Kid Two</span>
+              <span class="pill pill-neutral">Nothing today</span>
+            </div>
+
+            <!-- dependent: face + name only, not a button -->
+            <div class="tile tile-static">
+              <svg viewBox="0 0 100 100" class="avatar avatar-tile" aria-hidden="true">
+                <circle cx="50" cy="50" r="50" fill="#f0e9fd" />
+                <path d="M27 34a23 23 0 0 1 46 0z" fill="#7C3AED" />
+                <rect x="21" y="29" width="58" height="8" rx="4" fill="#7C3AED" />
+                <path d="M14 100c0-17 16-27 36-27s36 10 36 27z" fill="#7C3AED" />
+                <rect x="43" y="56" width="14" height="16" rx="6" fill="#c4a8f7" />
+                <circle cx="50" cy="42" r="23" fill="#c4a8f7" />
+                <circle cx="42" cy="41" r="3.2" fill="#50259a" />
+                <circle cx="58" cy="41" r="3.2" fill="#50259a" />
+                <path d="M42 50q8 7 16 0" stroke="#50259a" stroke-width="3.2" stroke-linecap="round" fill="none" />
+              </svg>
+              <span class="tile-name">Dependent One</span>
+            </div>
+          </div>
+
+          <div class="reset-strip">
+            <svg viewBox="0 0 24 24" width="30" height="30" class="reset-icon" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
+              <path d="M12 7v5.2l3.4 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+            <span class="reset-time">8:00 PM</span>
+            <span class="reset-text">
+              <strong>Family Reset</strong> — everyone tidies the common rooms together.
+            </span>
+            <span class="reset-tag">Every night</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════ PERSON SCREEN ══════════════ -->
+      <h2>Screen 2 — one person's day</h2>
+      <p class="note">
+        Progress bar mirrors the ring. A finished row turns green, fills its
+        check, and mutes the title. The toast confirms the tap and offers Undo,
+        wired to the existing <code>uncomplete</code> endpoint.
+      </p>
+
+      <div class="device">
+        <div class="sheet">
+          <div class="chores-header">
+            <button class="back-btn">‹ Back</button>
+            <svg viewBox="0 0 100 100" class="avatar avatar-head" aria-hidden="true">
+              <circle cx="50" cy="50" r="50" fill="#e7f6ec" />
+              <circle cx="50" cy="12" r="9" fill="#16A34A" />
+              <circle cx="50" cy="36" r="27" fill="#16A34A" />
+              <path d="M14 100c0-17 16-27 36-27s36 10 36 27z" fill="#16A34A" />
+              <rect x="43" y="56" width="14" height="16" rx="6" fill="#96dcaf" />
+              <circle cx="50" cy="42" r="23" fill="#96dcaf" />
+              <circle cx="42" cy="41" r="3.2" fill="#0e6a30" />
+              <circle cx="58" cy="41" r="3.2" fill="#0e6a30" />
+              <path d="M42 50q8 7 16 0" stroke="#0e6a30" stroke-width="3.2" stroke-linecap="round" fill="none" />
+            </svg>
+            <h1 class="chores-name">Kid One</h1>
+            <div class="clock">
+              <span class="clock-time">4:15 PM</span>
+              <span class="clock-date">Friday, August 7</span>
+            </div>
+          </div>
+
+          <div class="progress">
+            <div class="progress-track">
+              <div class="progress-fill" style="width: 33%; background: #16A34A"></div>
+            </div>
+            <span class="progress-label">1 of 3 done</span>
+          </div>
+
+          <ul class="chore-list">
+            <li>
+              <button class="chore chore-done">
+                <span class="check">
+                  <svg viewBox="0 0 24 24" width="60%" height="60%">
+                    <path d="M5 13l4.5 4.5L19 7" fill="none" stroke="#fff" stroke-width="3.4"
+                      stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+                <span class="chore-title">Example chore A</span>
+              </button>
+            </li>
+            <li>
+              <button class="chore">
+                <span class="check"></span>
+                <span class="chore-title">Example chore B</span>
+              </button>
+            </li>
+            <li>
+              <button class="chore">
+                <span class="check"></span>
+                <span class="chore-title">Example chore C</span>
+              </button>
+            </li>
+          </ul>
+
+          <div class="toast-row">
+            <div class="toast">
+              <span class="toast-text">Nice! Example chore A</span>
+              <button class="toast-btn">Undo</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════ STATES ══════════════ -->
+      <h2>Failure toast</h2>
+      <p class="note">
+        A save that fails rolls the row back and replaces the confirmation, so
+        the screen never keeps claiming something the server rejected.
+      </p>
+      <div class="toast toast-error" style="display: inline-flex">
+        <span class="toast-text">Couldn't save “Example chore A”. Try tapping it again.</span>
+        <button class="toast-btn">OK</button>
+      </div>
+
+      <h2>Palette</h2>
+      <div class="swatches">
+        <div class="sw" style="background: #4c1d95; color: #fff">Gradient start<small>#4c1d95</small></div>
+        <div class="sw" style="background: #6d28d9; color: #fff">Gradient mid<small>#6d28d9</small></div>
+        <div class="sw" style="background: #9333ea; color: #fff">Gradient end<small>#9333ea</small></div>
+        <div class="sw" style="background: #1f1436; color: #fff">Ink 17:1<small>#1f1436</small></div>
+        <div class="sw" style="background: #5b5175; color: #fff">Muted 7.3:1<small>#5b5175</small></div>
+        <div class="sw" style="background: #15803d; color: #fff">Done 5.0:1<small>#15803d</small></div>
+        <div class="sw" style="background: #eaf7ee; color: #1f1436">Done tint<small>#eaf7ee</small></div>
+        <div class="sw" style="background: #f3f1f9; color: #1f1436">Paper<small>#f3f1f9</small></div>
+        <div class="sw" style="background: #b3261e; color: #fff">Danger<small>#b3261e</small></div>
+      </div>
+
+      <h2>Type</h2>
+      <p class="note">
+        Nunito from the Google Fonts CDN, loaded non-render-blocking
+        (<code>media="print"</code> then promoted on load) so an unreachable CDN
+        costs the kiosk its typeface and never its first paint. The fallback
+        leads with <code>ui-rounded</code>, which resolves to SF Pro Rounded on
+        iPadOS — the nearest native match, so the board keeps its rounded
+        character offline.
+      </p>
+
+      <!-- ══════════════ DELIBERATELY ABSENT ══════════════ -->
+      <h2>Deliberately not built</h2>
+      <p class="note">
+        These appeared in the original mock. Each is excluded because shipping it
+        would have the board state something false to the family. Do not
+        reinstate any of them from this reference.
+      </p>
+      <div class="excluded">
+        <ul>
+          <li>
+            <b>Due times</b> (“By 9:30 PM”) — <code>chore_instances</code> has
+            <code>due_on</code>, a date. There is no cutoff-time column, so any
+            time shown would be invented.
+          </li>
+          <li>
+            <b>Escalation copy</b> (“someone gets a nudge if it's missed”) — no
+            notification service exists. A promise the system cannot keep is the
+            fastest way to lose the kids' trust in the board.
+          </li>
+          <li>
+            <b>The Calendar tab</b> — its history was a seeded random number.
+            Hidden entirely until a real history endpoint exists: not shipped
+            with today's data only, and not shipped empty.
+          </li>
+          <li>
+            <b>The subtasks / steps expander</b> — there is no
+            <code>chore_subtask_instances</code> table.
+          </li>
+          <li>
+            <b>A task on the dependent, or a tappable dependent tile</b> — the
+            API rejects a completion by a dependent
+            (<code>routes.py</code>, 400). The tile shows a face and a name, no
+            count, and is not a button.
+          </li>
+          <li>
+            <b>A checkbox on the 8:00 PM strip</b> — the strip is kept, but it is
+            a static schedule display. No <code>chore_instance</code> backs it,
+            so there is nothing to complete.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

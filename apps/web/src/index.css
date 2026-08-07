@@ -1,16 +1,37 @@
+/* Atlas Household kiosk — wall-mounted iPad in a kitchen.
+ *
+ * Every size here is chosen to be read standing 2-6 feet away, at an angle, and
+ * tapped with a wet hand: type scales with the viewport, touch targets never go
+ * below ~60px, and text/background pairs are measured, not eyeballed.
+ */
+
 * {
   box-sizing: border-box;
 }
 
 :root {
-  --bg: #f1f5f9;
-  --card: #ffffff;
-  --text: #0f172a;
-  --muted: #64748b;
-  --line: #e2e8f0;
-  --danger: #b91c1c;
-  --accent: #2563eb;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Nunito comes from the CDN (see index.html). It is loaded non-render-blocking
+   * on purpose, so a kitchen wifi outage costs the kiosk its typeface and not
+   * its screen. ui-rounded resolves to SF Pro Rounded on iPadOS — the closest
+   * native match to Nunito's rounded humanist shapes, so the fallback keeps the
+   * design's character rather than dropping to a flat grotesque. */
+  --font: 'Nunito', ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Varela Round',
+    system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --grad: linear-gradient(150deg, #4c1d95 0%, #6d28d9 45%, #9333ea 100%);
+  --ink: #1f1436;
+  --muted: #5b5175;
+  --paper: #f3f1f9;
+  --line: #ded8ee;
+  --green: #15803d;
+  --green-tint: #eaf7ee;
+  --green-line: #7fc593;
+  --danger: #b3261e;
+  --lav: #f4f0ff;
+  --lav-line: #ddd2f7;
+
+  font-family: var(--font);
+  font-synthesis-weight: none;
 }
 
 html,
@@ -22,22 +43,27 @@ body,
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: #4c1d95;
+  color: var(--ink);
   /* Kiosk: no accidental scroll, zoom, text-select, or tap flash. */
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+button {
+  font-family: inherit;
 }
 
 .screen {
   min-height: 100svh;
   width: 100%;
   display: flex;
-  flex-direction: column;
-  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
-    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background: var(--grad);
+  padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+    max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
 }
 
 .center {
@@ -46,191 +72,470 @@ body {
   text-align: center;
 }
 
-.muted {
+/* The white sheet everything lives on. */
+.sheet {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 34px;
+  padding: clamp(14px, 2vw, 26px) clamp(16px, 2.4vw, 32px);
+  box-shadow: 0 18px 50px rgba(23, 8, 56, 0.32);
+  overflow: hidden;
+}
+
+/* ---------- header ---------- */
+.top-bar,
+.chores-header {
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 1.6vw, 20px);
+  flex: 0 0 auto;
+  margin-bottom: clamp(10px, 1.6vw, 20px);
+}
+
+.household,
+.chores-name {
+  margin: 0;
+  font-size: clamp(1.5rem, 2.8vw, 2.3rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clock {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+  flex: 0 0 auto;
+}
+.clock-time {
+  font-size: clamp(1.5rem, 2.8vw, 2.3rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.clock-date {
+  font-size: clamp(0.95rem, 1.6vw, 1.3rem);
+  font-weight: 700;
   color: var(--muted);
-  font-size: 1.5rem;
 }
 
-/* ---------- member tiles ---------- */
-.board-title {
-  font-size: 2.5rem;
-  margin: 0 0 24px;
-  text-align: center;
-}
-
+/* ---------- family screen ---------- */
 .tiles {
   flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
+  /* 132px keeps all five people on one row in both iPad orientations, so
+   * nobody is pushed onto a second row the kids have to look for. */
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  /* Bounded by height AND width: a tall portrait screen must not stretch the
+   * tiles into columns, and a short landscape one must not squash them. */
+  grid-auto-rows: minmax(200px, min(40vh, 32vw));
+  gap: clamp(10px, 1.4vw, 18px);
   align-content: center;
 }
 
 .tile {
-  border: none;
-  border-radius: 24px;
-  color: #fff;
-  padding: 32px;
-  min-height: 30vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  cursor: pointer;
+  gap: clamp(6px, 0.9vw, 12px);
+  border: 4px solid var(--line);
+  border-radius: 26px;
+  padding: clamp(10px, 1.4vw, 20px) 8px;
+  background: var(--paper);
+  color: var(--ink);
   font: inherit;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-  transition: transform 0.05s ease;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.06s ease;
 }
 .tile:active {
   transform: scale(0.97);
 }
-.tile-disabled,
-.tile-disabled:active {
-  opacity: 0.45;
-  cursor: default;
-  box-shadow: none;
-  transform: none;
-}
-.tile-name {
-  font-size: 2.4rem;
-  font-weight: 700;
-}
-.tile-sub {
-  font-size: 1.4rem;
-  opacity: 0.95;
+/* Green means finished — nothing else in the grid is allowed to be green. */
+.tile-complete {
+  background: var(--green-tint);
+  border-color: var(--green);
 }
 
-/* ---------- a member's chores ---------- */
-.chores-screen {
-  overflow: hidden;
+/* The dependent: shown, never offered. Not a <button>, so it is not focusable
+ * and cannot be activated by touch, keyboard, or assistive tech. */
+.tile-static,
+.tile-static:active {
+  background: var(--paper);
+  border-style: dashed;
+  cursor: default;
+  transform: none;
 }
-.chores-header {
+
+.tile-name {
+  font-size: clamp(1.2rem, 2.4vw, 2rem);
+  font-weight: 800;
+  line-height: 1.12;
+  text-align: center;
+  max-width: 100%;
+  /* Wrap to two lines rather than clipping: a name a kid can't read is worse
+   * than a name on two lines. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.3em 0.85em;
+  border-radius: 999px;
+  font-size: clamp(1rem, 1.95vw, 1.5rem);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.pill-todo {
+  background: var(--ink);
+  color: #fff;
+}
+.pill-done {
+  background: var(--green);
+  color: #fff;
+}
+.pill-neutral {
+  background: var(--paper);
+  color: var(--muted);
+  border: 2px solid var(--line);
+}
+
+/* ---------- avatar + progress ring ---------- */
+/* Bounded by height AND width so the ring never outgrows its tile in either
+ * orientation. */
+.ring {
+  position: relative;
+  width: clamp(84px, min(15vh, 11.5vw), 175px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.ring-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.avatar {
+  display: block;
+  border-radius: 50%;
+}
+.avatar-in-ring {
+  width: 66%;
+  height: 66%;
+}
+.avatar-tile {
+  width: clamp(72px, min(13vh, 10vw), 150px);
+  height: auto;
+  aspect-ratio: 1;
+}
+.avatar-head {
+  width: clamp(48px, 7vh, 74px);
+  height: auto;
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+}
+.ring-badge {
+  position: absolute;
+  right: 2%;
+  bottom: 2%;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: var(--green);
+  border: 3px solid #fff;
+  display: grid;
+  place-items: center;
+}
+
+/* ---------- 8pm family reset: a schedule, not a task ---------- */
+.reset-strip {
+  flex: 0 0 auto;
+  margin-top: clamp(10px, 1.4vw, 18px);
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: clamp(8px, 1.2vw, 16px);
+  background: var(--lav);
+  border: 2px solid var(--lav-line);
+  border-radius: 18px;
+  padding: clamp(10px, 1.2vw, 15px) clamp(14px, 1.8vw, 22px);
+  color: var(--ink);
 }
-.chores-header h1 {
-  font-size: 2.6rem;
-  margin: 0;
+.reset-icon {
+  flex: 0 0 auto;
+  color: #6d28d9;
 }
+.reset-time {
+  font-weight: 800;
+  font-size: clamp(1rem, 1.7vw, 1.4rem);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.reset-text {
+  flex: 1 1 240px;
+  font-size: clamp(1rem, 1.7vw, 1.35rem);
+  font-weight: 600;
+  color: var(--muted);
+}
+.reset-text strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+.reset-tag {
+  margin-left: auto;
+  flex: 0 0 auto;
+  background: #fff;
+  border: 2px solid var(--lav-line);
+  border-radius: 999px;
+  padding: 0.25em 0.8em;
+  font-size: clamp(0.75rem, 1.15vw, 0.95rem);
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ---------- one member's chores ---------- */
 .back-btn {
-  border: 2px solid var(--muted);
-  background: var(--card);
-  color: var(--text);
-  border-radius: 16px;
-  padding: 16px 28px;
-  font-size: 1.5rem;
+  flex: 0 0 auto;
+  border: 3px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 18px;
+  padding: 0 clamp(18px, 2vw, 26px);
+  min-height: 64px;
+  font-size: clamp(1.05rem, 1.7vw, 1.4rem);
+  font-weight: 800;
   cursor: pointer;
-  font: inherit;
 }
 .back-btn:active {
   transform: scale(0.97);
 }
 
+.progress {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 1.6vw, 20px);
+  margin-bottom: clamp(12px, 1.6vw, 20px);
+}
+.progress-track {
+  flex: 1;
+  height: clamp(14px, 1.6vw, 20px);
+  border-radius: 999px;
+  background: var(--paper);
+  border: 2px solid var(--line);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+.progress-label {
+  flex: 0 0 auto;
+  font-size: clamp(1rem, 1.6vw, 1.35rem);
+  font-weight: 800;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .chore-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  /* Bottom room so the toast can never sit on top of the last chore. */
+  padding: 0 4px clamp(16px, 13vh, 116px) 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: clamp(10px, 1.4vw, 16px);
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
+
 .chore {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: clamp(14px, 2vw, 22px);
   border: 3px solid var(--line);
-  background: var(--card);
-  border-radius: 20px;
-  padding: 28px;
-  font-size: 2rem;
-  cursor: pointer;
+  background: #fff;
+  border-radius: 22px;
+  padding: clamp(14px, 2vw, 24px) clamp(16px, 2.4vw, 28px);
+  min-height: 96px;
+  font-size: clamp(1.3rem, 2.3vw, 2rem);
+  font-weight: 700;
   text-align: left;
-  color: var(--text);
-  font: inherit;
-  transition: transform 0.05s ease;
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.06s ease;
 }
 .chore:active {
   transform: scale(0.99);
 }
 .chore .check {
   flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
+  width: clamp(48px, 4.6vw, 60px);
+  height: clamp(48px, 4.6vw, 60px);
   border-radius: 50%;
-  border: 3px solid #cbd5e1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 1.8rem;
-  font-weight: 700;
+  border: 4px solid #b9b0d4;
+  background: #fff;
+  display: grid;
+  place-items: center;
 }
 .chore-done {
-  opacity: 0.6;
-}
-.chore-done .chore-title {
-  text-decoration: line-through;
+  background: var(--green-tint);
+  border-color: var(--green-line);
 }
 .chore-done .check {
-  border: none;
+  background: var(--green);
+  border-color: var(--green);
 }
+.chore-done .chore-title {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 3px;
+}
+.chore-title {
+  min-width: 0;
+}
+
 .big-empty {
-  font-size: 2rem;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  font-size: clamp(1.5rem, 2.6vw, 2.2rem);
+  font-weight: 700;
+  color: var(--muted);
   text-align: center;
-  margin-top: 15vh;
+  margin: 0;
+}
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2vw, 22px);
+  max-width: min(92vw, 780px);
+  background: var(--ink);
+  color: #fff;
+  border-radius: 20px;
+  padding: 14px 16px 14px clamp(20px, 2.4vw, 28px);
+  box-shadow: 0 16px 44px rgba(15, 5, 40, 0.5);
+  z-index: 30;
+  animation: toast-in 0.16s ease-out;
+}
+.toast-error {
+  background: var(--danger);
+}
+.toast-text {
+  font-size: clamp(1.05rem, 1.8vw, 1.4rem);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toast-btn {
+  flex: 0 0 auto;
+  min-height: 58px;
+  min-width: 116px;
+  border: 3px solid rgba(255, 255, 255, 0.7);
+  background: transparent;
+  color: #fff;
+  border-radius: 15px;
+  padding: 0 22px;
+  font-size: clamp(1rem, 1.6vw, 1.3rem);
+  font-weight: 800;
+  cursor: pointer;
+}
+.toast-btn:active {
+  transform: scale(0.97);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 /* ---------- setup / error cards ---------- */
 .card {
-  background: var(--card);
-  border-radius: 24px;
-  padding: 40px;
-  max-width: 520px;
+  background: #fff;
+  border-radius: 28px;
+  padding: clamp(26px, 4vw, 44px);
+  max-width: 560px;
   width: 100%;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 18px 50px rgba(23, 8, 56, 0.32);
 }
 .card h1 {
-  font-size: 2rem;
+  font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+  font-weight: 800;
   margin: 0 0 12px;
+}
+.card-body {
+  font-size: clamp(1.1rem, 1.8vw, 1.45rem);
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0;
 }
 .error-card h1 {
   color: var(--danger);
 }
 .token-input {
   width: 100%;
-  font-size: 1.5rem;
+  font-family: inherit;
+  font-size: 1.4rem;
   padding: 18px;
-  border: 2px solid #cbd5e1;
-  border-radius: 14px;
-  margin: 20px 0;
-  font: inherit;
+  border: 3px solid var(--line);
+  border-radius: 16px;
+  margin: 22px 0;
 }
 .big-btn {
   width: 100%;
-  font-size: 1.5rem;
-  padding: 20px;
+  min-height: 68px;
+  font-size: clamp(1.1rem, 1.8vw, 1.4rem);
+  font-weight: 800;
   border: none;
-  border-radius: 14px;
-  background: var(--accent);
+  border-radius: 16px;
+  background: #6d28d9;
   color: #fff;
   cursor: pointer;
-  font-weight: 600;
-  font-family: inherit;
+  margin-top: 22px;
 }
 .big-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 .big-btn:active:not(:disabled) {
   transform: scale(0.98);
+}
+.error-card .big-btn {
+  background: var(--danger);
 }
 
 /* ---------- offline banner ---------- */
@@ -242,7 +547,17 @@ body {
   background: var(--danger);
   color: #fff;
   text-align: center;
-  padding: 14px;
-  font-size: 1.2rem;
-  z-index: 10;
+  padding: 12px;
+  font-size: clamp(0.95rem, 1.5vw, 1.2rem);
+  font-weight: 800;
+  z-index: 40;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
