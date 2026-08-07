@@ -5,10 +5,20 @@ Postgres → FastAPI → Vite → Chromium at the wall iPad's 1080×810 @2x). Ki
 usability, adversarial use, failure modes, time and date, data integrity,
 physical and visual.
 
-**Two rounds.** Round 1 found FIX NOW defects in all six domains. Fixing them
-introduced two new FIX NOW defects — caught because the adversarial critic
-re-tested against the patched tree rather than the tree it started on. Round 2
-re-attacked the fixes. The round-2 result is recorded at the bottom.
+**Three rounds — the ceiling.** Round 1 found FIX NOW defects in all six
+domains. Fixing them introduced two more, caught because the adversarial critic
+re-tested against the patched tree rather than the one it started on. Round 2
+re-attacked those fixes and found four more FIX NOW, **every one of them caused
+by a round 1 fix**. Round 3 re-attacked round 2's fixes.
+
+That pattern is the main result of this exercise: on this surface, roughly one
+in four fixes introduced a new defect of equal severity, and none of them would
+have been found by testing the code the critics started on. The rounds were not
+ceremony.
+
+Round 2 was run by three critics covering two domains each rather than six
+covering one, because its attack surface was only the changed code. All six
+domains were still owned. Round 3 the same.
 
 Ground rules the critics worked under: defects in what exists only, no features,
 no refactors; anything needing a schema change is automatically FIX NEXT SLICE
@@ -271,6 +281,151 @@ other kid's screen, and a toast whose response lands after Back never appears.
 
 ---
 
+## FIX NOW — round 2: defects the round 1 fixes introduced
+
+Every one of these was caused by a fix above. All fixed and verified.
+
+### 18. A hung request pinned a permanent false ✓ and killed the row
+`apps/web/src/api.ts`, `apps/web/src/App.tsx` — caused by fix 6
+
+`pending` was cleared only in `finally`, and nothing in `api.ts` had a timeout,
+so a request that never settled kept its id in `pending` **forever**. Fix 6's
+merge then dutifully preserved that row's optimistic value against every poll,
+focus refetch and visibility refetch. Two compounding effects: the wall showed a
+✓ the database did not have, permanently; and `toggle` early-returns on a
+pending row, so it stopped accepting taps entirely. Measured over 190s: five
+successful board fetches all disagreed with the screen and all lost. Only a full
+page reload cleared it — not something a kid can do to a wall-mounted PWA.
+
+Not hypothetical: `statement_timeout` is `0`, so a row lock blocks `POST
+/complete` indefinitely (a `curl --max-time 20` gave up first, at
+`http_code=000`); and Wi-Fi dropping after a request is on the wire leaves a
+half-open socket with no RST.
+
+Before fix 6 the 60s poll corrected this. Fix 6 is what made the lie permanent.
+
+**Fixed:** `AbortSignal.timeout(20_000)` on every request. **Verified:** the
+tick clears after the timeout, the kid is told, and the row still accepts taps
+afterwards.
+
+### 19. A slow board GET erased the tick of a chore that had saved
+`apps/web/src/App.tsx` — caused by fix 6
+
+The merge protected only rows *still* in `pending`. A board GET issued **before**
+a write and answered **after** it arrives once the write has finished and left
+the set, so the stale snapshot overwrote a committed row. Round 1's symptom was
+"the tick vanishes and comes back"; this one vanishes and does **not** come
+back until the next 60s poll. Reproduced at board latencies of 2500, 1200, 800,
+400 and **250ms** — and the everyday trigger needs no artificial delay, because
+waking the iPad fires two board GETs that a cold Lambda answers in 1–3s while a
+warm write answers in ~200ms.
+
+**Fixed:** a `writeSeq` counter; `refresh()` captures it at issue time and keeps
+any row written since. **Verified:** the tick survives at 800/1500/2500ms.
+
+### 20. The cooldown swallowed the retry the error toast demands
+`apps/web/src/App.tsx` — caused by fixes 2 and 4 together
+
+The error toast says **"Tap it again."** and renders ~40–80ms after the tap. But
+`lastTap` was stamped at the *start* of the failed tap, so the row stayed in
+cooldown for ~1.95s — squarely across the 0.5–1.5s a human takes to read and
+re-tap. The obedient retry sent nothing. Measured dead window: 1.92–1.97s,
+beginning the instant the instruction appears.
+
+**Fixed:** a failed write clears that row's cooldown — nothing was written, so
+there is nothing to protect. **Verified:** retries at 400/900/1500ms all go out
+and save.
+
+### 21. The cooldown toast claimed work had been undone when nothing happened
+`apps/web/src/App.tsx` — caused by fix 4
+
+The cooldown branch re-asserted state by reusing `done`/`undone`, which are
+worded as **transitions**. So a tap the code deliberately did not act on was
+reported as an action: "Feed the dog — not done any more". Combined with the
+above, the sequence was: tap fails → "Tap it again." → kid taps → no request →
+"not done any more".
+
+**Fixed:** a new `already` kind that states the row — "… is already done ✓" /
+"… is not done yet". **Verified.**
+
+### 22. The in-flow offline banner moved every chore row 46px
+`apps/web/src/index.css`, `apps/web/src/App.tsx` — caused by fix 8
+
+Fix 8 stopped the banner covering the Back button by putting it in flow — and
+in doing so made it push the whole list down by its own height whenever the
+network hiccupped. Measured 46.0px against a 104px row pitch and a 92px row:
+**37% of a row became the row above it**, the next 12px became dead gap, and a
+tap that straddled the change was swallowed entirely (Chrome fires `click` on
+the common ancestor, so it vanished into the `<ul>` with no toggle and no
+toast). It toggles repeatedly on a flaky link. A kid aiming at "Make your bed"
+marked "Homework folder in backpack" done.
+
+The `.sheet.grow` comment already named "shifting the list under a finger
+mid-tap" as a hazard; fix 8 reintroduced exactly that.
+
+**Fixed:** the banner is always rendered and its strip permanently reserved;
+only `visibility` toggles. It neither covers a control nor moves the list.
+**Verified:** rows sit at identical pixels with the banner on and off.
+
+### 23. "Try again" could stick on "Trying…" forever
+`apps/web/src/App.tsx` — caused by fix 9
+
+`refresh()` swallows every error, so it settles only when the fetch settles —
+and there was no timeout. Against a hung request `.finally` never ran and
+`retrying` was stuck `true` with no other path to clear it. The flag outlived
+the failure: after a token wipe, a grown-up who typed the **correct** token met
+a fresh error card with a greyed-out "Trying…" button and zero requests in
+flight. Fix 9 existed because a retry that changed nothing looked dead; it now
+looked *busy* forever, which is worse.
+
+**Fixed:** guarded re-entry, a 25s hard stop, and a reset when the token
+changes.
+
+### 24. The merge preserved the row it had just rolled back
+`apps/web/src/App.tsx` — caused by fix 19, found while verifying it
+
+A React subtlety, not a logic error: the `setBoard` updater is a closure React
+runs **later, during render**. It read `lastWrite` lazily, and by then the catch
+had already recorded the write — so `seq > issuedAt` was true and the merge
+preserved the stale rolled-back row instead of the server's truth. The symptom
+was the committed-but-lost-response case regressing: DB done, toast "— done",
+row plain. A later refresh corrected it, which is what identified the cause.
+
+**Fixed:** snapshot the `keepLocal` set eagerly when the response lands, rather
+than reading refs inside the updater.
+
+### 25. The dependent's name shrink was dead CSS, and its dimming hurt contrast
+`apps/web/src/index.css` — caused by fix 14
+
+`.pcard-static .nm` has equal specificity to `.pcard .nm` and was declared
+earlier, so it **silently never applied** — the name rendered at full size and
+half of fix 14 never ran. Separately, `opacity: .75` on the card dropped that
+name to 3.56:1 (2.88:1 under 15% glare), making it the first name on the board
+to fail — a fix that made one thing worse while fixing another.
+
+**Fixed:** doubled class to win the tie, and the dimming moved onto the ring so
+the name keeps full contrast. **Verified:** 16.2px vs a sibling's 20.52px, card
+opacity back to 1.
+
+### 26. The chore list had no cue when rows were clipped
+`apps/web/src/App.tsx`, `apps/web/src/index.css` — round 1 FIX NEXT SLICE 25, made worse by fix 7
+
+Fix 7's 116px reserve cut the visible list by one row, and at 1080×810 with six
+chores the list ended **flush — a 0px sliver, no cue at all**. The banner
+reservation later moved the fold and that exact case is gone, but at 1024×768
+the fold still lands on a **23.1px band containing nothing**: 0 of 44px of the
+check circle, 0 of 26px of the title, strongest mark 1.11:1, and iPadOS overlays
+the scrollbar so there is none. Whether the cue was adequate was an accident of
+viewport height, not a decision.
+
+**Fixed:** a bottom fade applied only while content is genuinely clipped,
+measured with a scroll listener and a `ResizeObserver` — so it never suggests
+more content when the list ends. **Verified** across seven viewports: the cue
+appears exactly when something is clipped, is absent when the list fits, and
+disappears once scrolled to the bottom.
+
+---
+
 ## FIX NEXT SLICE — real, not blocking, not started
 
 **API and data**
@@ -358,6 +513,46 @@ other kid's screen, and a toast whose response lands after Back never appears.
 31. Member tile borders are 1.67:1 and fills 1.22:1 against the gradient; the
     only tap targets on the resting screen have edges below the 3:1 bar.
 
+**Added in round 2**
+
+32. A cooldown-ignored tap still re-aims the toast at a different chore, sliding
+    the Undo button 76px; pressing it then erases the wrong one. A branch that
+    ignores a tap should not mutate global toast state.
+33. Two rows failing at once are announced as one — a single global toast, so
+    the second failure is reported to nobody. Likewise a success toast can
+    overwrite an error toast when another row settles after it.
+34. Back pressed mid-reconcile buries a real failure: the error toast is
+    member-scoped and is created after the kid has left, so it is never shown.
+35. A failed tap can now log the kiosk out. The catch awaits `refresh()`, so a
+    500 on `/complete` plus a 401 board clears the token and drops the wall to
+    the setup screen within ~200ms, where before it waited for the next poll.
+36. The toast resurrects on re-entry: Back then re-select the same person within
+    `TOAST_MS` and the "— done [Undo]" toast reappears. It is hidden, not
+    dismissed.
+37. A tap that fails across midnight always reports a false failure — the
+    reconcile looks the row up in the new day's board, does not find it, and
+    says "Couldn't save".
+38. A rejected token gives no feedback at all: the identical setup card returns
+    with the input cleared and no message, on the one screen that exists to
+    unbrick the kiosk.
+39. `lastTap` and `lastWrite` are never pruned. Not a leak at this scale (UUID
+    keys, ~10 rows/day, one ~100-byte entry per tap) and keys can never be
+    reused, but nothing expires them.
+40. The ring track is still only 1.95:1 against its own card (up from 1.48:1),
+    so at 0% you cannot easily see that a ring is there. The arc-vs-track fix is
+    real (1.60:1 → 4.62:1) but neither the arc nor the check border reaches its
+    bar under 30% glare or off-axis (2.60:1 / 2.02:1).
+41. `.trow:active`'s background change is 1.16:1 (todo) and 1.10:1 (done) — the
+    done variant is 37% weaker, on the row most likely to be re-tapped. The
+    `scale(.98)` is what actually makes the press read.
+42. The error toast is the only toast that fails under glare: 6.84:1 flat but
+    4.04:1 at 30% glare and 3.72:1 off-axis.
+43. Un-ticking by accident costs a 2s lockout with no way out: the `undone` and
+    `already` toasts carry no button, so the row is the only control and it is
+    refusing.
+44. Portrait 810×1080 orphans the dependent onto its own grid row with the lower
+    two-thirds of the screen empty. Cosmetic, portrait only.
+
 ---
 
 ## ACCEPTED — known, deliberate, reasons recorded
@@ -396,7 +591,19 @@ other kid's screen, and a toast whose response lands after Back never appears.
    narrow one; the benefit is that no accidental double tap can erase a chore.
 7. **The reserved 116px toast strip costs vertical space permanently.** Accepted
    over showing it only when the toast appears, because that would shift rows
-   under a finger mid-tap — trading a layout hazard for a space cost.
+   under a finger mid-tap — trading a layout hazard for a space cost. The
+   offline banner's 44px strip is reserved for the same reason, and for the same
+   reason: round 2 proved the alternative causes mistaps. 160px total. The
+   reserve does its job — the toast clears the list at every viewport tested,
+   by 11–15px.
+8. **The offline banner red and the error toast red are the same colour** and
+   can be on screen together. They are told apart by position and shape only —
+   a full-width strip at the top versus a pill at the bottom. Accepted: colour
+   carries no information there, but position does, and both are unambiguous.
+9. **`isSendable()` is slightly stricter than HTTP requires.** It rejects space
+   and tab, which HTTP would strip and the API accepts. Unreachable in practice
+   (`TokenSetup` trims), and a false rejection lands on the recoverable setup
+   screen. Accepted over loosening a security-adjacent check.
 
 ---
 
