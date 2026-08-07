@@ -59,6 +59,58 @@ The API and the web each need the other's URL, so deploy in this order:
    but a standalone PWA is a different rendering context — verify it there,
    because a blank board that reads as "all done" is the failure that matters.
 
+## Part E — On the wall
+
+Everything in `docs/GAUNTLET-01.md` was measured in a headless browser at the
+iPad's viewport. These checks **cannot** be run that way, and each is a real
+gap, not a formality — so run them once the iPad is actually mounted, in the
+kitchen, at the height and angle it will live at.
+
+Findings from these go into the same three buckets as the rest of the gauntlet —
+**FIX NOW / FIX NEXT SLICE / ACCEPTED** — appended to `docs/GAUNTLET-01.md` with
+a reason recorded for anything accepted. Same bar: a defect in what exists, not
+a feature request.
+
+1. **Glare.** Look at the board at the times of day the kitchen is brightest,
+   and with the ceiling lights on at night. Glare was modelled as a uniform
+   white veil at 15% and 30%; a real specular highlight off a window is not
+   uniform and the panel's coating is not modelled at all. What to watch: the
+   gold progress arc and the empty tick circle are the first things to give out
+   — measured at 2.60:1 and 2.02:1 under the simulated conditions, both under
+   their 3:1 bar. If the arc disappears in real glare, the ring stops being
+   information.
+2. **Off-axis viewing.** Kids look **up** at a wall mount. Stand where they
+   stand, not where you stand. The simulation applied a generic IPS gamma lift
+   and contrast compression; real panel behaviour is not that. Watch the same
+   two elements, plus whether the done-row tint still separates from a to-do row
+   (it is only 1.01:1 — the green check circle carries that signal alone).
+3. **The six-foot read.** Stand at the far side of the kitchen. Can you tell,
+   without walking over, who still has chores left? The count pill is the
+   element that has to answer that. Downscaled renders stood in for this, which
+   models optical averaging but not the eye's contrast-sensitivity roll-off, so
+   the simulation is **optimistic**.
+4. **Safari standalone PWA.** Everything was verified in Chromium. Open the app
+   from the **home-screen icon**, not Safari, and re-check: the error state (see
+   Part D.5), the toast and its Undo button, and the chore list scrolling with
+   real momentum and rubber-banding.
+5. **Safe-area insets.** `env(safe-area-inset-*)` reports **0** in a headless
+   browser, so none of the safe-area handling has ever actually run. There is a
+   known suspected double-count: `.offline-banner` applies
+   `padding-top: max(8px, env(safe-area-inset-top))` on top of `.kiosk`'s own
+   `padding-top: env(safe-area-inset-top)`. Recorded as UNVERIFIED (FIX NEXT
+   SLICE 54). Check whether the offline banner sits too low with the notch/home
+   indicator in play, in both orientations.
+6. **Which iPad is it?** Two findings depend on the exact viewport. Only 3 chore
+   rows fit on an iPad mini 6 in landscape (1133×744) versus 4 on everything
+   else. And the cue that a list continues below the fold is a partial row —
+   57.6px with a visible check circle at 1080×810 (the 10.2"), but only a 23px
+   featureless band at 1024×768. If your device is the latter, FIX NEXT SLICE 45
+   is live for you and worth promoting.
+
+Two things worth checking with the actual kids, which no instrument settles:
+whether a 2-second cooldown after a tap reads as "it heard me" or as "it's
+broken", and whether they notice a list continues below the fold at all.
+
 ## Troubleshooting
 
 - **Preview deployments fail to load the board — EXPECTED.** Every branch/PR push
