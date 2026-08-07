@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Atlas Household — kiosk design reference</title>
+
+    <!--
+      ATLAS HOUSEHOLD — KIOSK DESIGN REFERENCE
+      ========================================
+
+      Hardcoded placeholder data. No real family names, no network requests.
+      Open it straight from the repo; the font loads by relative path out of
+      apps/web/public/fonts.
+
+      WHAT THIS FILE IS
+      -----------------
+      A RECONSTRUCTION, not the original mock. The original prototype HTML was
+      not available when this was built, so this was rebuilt from the written
+      design brief. It is the source of truth for what apps/web actually ships
+      and should be kept in step with it. If the original mock resurfaces, port
+      against that instead and replace this file.
+
+      Target: wall-mounted iPad Pro 12.9" landscape, 1366x1024 CSS px, ~132 CSS
+      px per inch. At six feet a 20px glyph subtends ~5 arcminutes — the point
+      where a letter is merely resolvable. Comfortable glance-reading wants 2-3x
+      that, so nothing carrying information is under 20px, counts are 26px+, and
+      names are 40px+.
+
+      DELIBERATELY EXCLUDED — each of these would have the board state something
+      it cannot actually know, to two kids who will believe it.
+      ---------------------------------------------------------------------
+      * Due times ("By 9:30 PM"). chore_instances has due_on, a DATE. There is
+        no cutoff-time column, so any clock time here is invented.
+      * Escalation copy ("X gets a nudge if it's missed"). There is no
+        notification service. Nothing would send. This is the most important
+        exclusion: a promise the system cannot keep is what teaches a kid to
+        stop trusting the board.
+      * The Calendar tab. Its history was a seeded random number. No history
+        endpoint exists. Hidden entirely — not shipped empty, and not shipped
+        showing only today.
+      * The subtasks / steps expander. There is no chore_subtask_instances
+        table.
+      * A dependent member holding a task or being tappable. The API refuses it
+        (routes.py: "A dependent cannot complete a chore"). The dependent tile
+        shows a face and a name, no count, and is not tappable.
+
+      COLOR RULE
+      ----------
+      members.color is arbitrary hex a parent typed in; the schema constrains
+      nothing. So the ring and the pill are darkened until they clear 3:1 on
+      white, and pill text is whichever of white/black scores higher — which is
+      provably at least 4.58:1 for any color in sRGB. Nothing here assumes a
+      curated palette. The values below are those functions already applied.
+    -->
+
+    <style>
+      @font-face {
+        font-family: 'Nunito';
+        font-style: normal;
+        font-weight: 400 800;
+        font-display: block;
+        src: url('../../apps/web/public/fonts/nunito-latin.woff2') format('woff2');
+      }
+
+      * { box-sizing: border-box; }
+
+      :root {
+        --sheet: #ffffff;
+        --text: #1e1b2e;
+        --muted: #635c7a;
+        --line: #e7e3f0;
+        --danger: #b91c1c;
+        --danger-soft: #fdf0f0;
+        --done: #15803d;      /* green-700; white on green-600 is only 3.30:1 */
+        --done-soft: #eefaf1;
+        --accent: #6d28d9;
+        font-family: 'Nunito', ui-rounded, 'SF Pro Rounded', -apple-system,
+          'Segoe UI', system-ui, sans-serif;
+        color: var(--text);
+      }
+
+      body {
+        margin: 0;
+        background: #2b1a4d;
+        padding: 32px;
+      }
+
+      .caption {
+        max-width: 1366px;
+        margin: 0 auto 12px;
+        color: #d8ccf5;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      /* One frame == one iPad Pro 12.9" screen, landscape. */
+      .frame {
+        position: relative;
+        width: 1366px;
+        height: 1024px;
+        margin: 0 auto 48px;
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+        border-radius: 18px;
+        overflow: hidden;
+        background: linear-gradient(160deg, #8b5cf6 0%, #7c3aed 38%, #5b21b6 100%);
+      }
+
+      .sheet {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--sheet);
+        border-radius: 36px;
+        padding: 28px 36px 32px;
+        box-shadow: 0 24px 60px rgba(30, 12, 70, 0.32);
+      }
+
+      /* ---------- header ---------- */
+      .sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid var(--line);
+      }
+      .sheet-title { font-size: 44px; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
+      .when { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+      .when-time {
+        font-size: 52px; font-weight: 800;
+        font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+      }
+      /* Device clock, but a date read off the board's own rows — so the header
+         can never claim a different day than the chores underneath it. */
+      .when-date { font-size: 22px; font-weight: 600; color: var(--muted); }
+
+      /* ---------- family screen ---------- */
+      .tiles {
+        flex: 1; min-height: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 20px; align-content: center; padding: 12px 0;
+      }
+      .tile {
+        border: 3px solid var(--line); border-radius: 28px;
+        background: var(--sheet); color: var(--text); font: inherit;
+        padding: 24px 16px; min-height: 56px;
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 16px; cursor: pointer;
+        box-shadow: 0 4px 14px rgba(30, 12, 70, 0.07);
+      }
+      /* Four defenses, all load-bearing: dimmed, native disabled, no handler,
+         and no count. The API refuses it too — this is defense in depth. */
+      .tile-disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+
+      .tile-face { position: relative; width: 148px; height: 148px; flex: 0 0 auto; }
+      .ring { position: absolute; inset: 0; width: 100%; height: 100%; }
+      .ring-track { fill: none; stroke: var(--line); stroke-width: 11; }
+      .ring-fill { fill: none; stroke-width: 11; stroke-linecap: round; }
+      .avatar {
+        position: absolute; inset: 20px;
+        width: calc(100% - 40px); height: calc(100% - 40px);
+      }
+
+      .tile-name { font-size: 40px; font-weight: 800; line-height: 1.1; text-align: center; }
+      .pill {
+        font-size: 26px; font-weight: 700; padding: 8px 20px;
+        border-radius: 999px; background: var(--line); color: var(--text); white-space: nowrap;
+      }
+      .pill-done { background: var(--done); color: #fff; }
+      .pill-none { background: transparent; color: var(--muted); }
+
+      /* Schedule, NOT a task. No checkbox, no tap target, no done state — the
+         board has no idea whether this happened and must not imply it does. */
+      .reset-strip {
+        margin: 0; display: flex; align-items: center; gap: 14px;
+        padding: 18px 24px; border-radius: 20px;
+        background: #f6f3fc; border: 2px dashed #ded5f2;
+        color: var(--muted); font-size: 24px; font-weight: 600;
+      }
+      .reset-strip strong { color: var(--text); font-weight: 800; margin-right: 8px; }
+      .reset-clock { font-size: 28px; }
+      .reset-note { margin-left: auto; font-size: 20px; font-weight: 600; }
+
+      /* ---------- person screen ---------- */
+      .person-head { display: flex; align-items: center; gap: 24px; padding: 24px 0 20px; }
+      .person-face { position: relative; width: 104px; height: 104px; flex: 0 0 auto; }
+      .person-face .avatar { inset: 0; width: 100%; height: 100%; }
+      .person-meta { flex: 1; min-width: 0; }
+      .person-name { font-size: 44px; font-weight: 800; margin: 0 0 12px; }
+      .bar { height: 20px; border-radius: 999px; background: var(--line); overflow: hidden; }
+      .bar-fill { height: 100%; border-radius: 999px; }
+      .person-count { margin: 10px 0 0; font-size: 22px; font-weight: 700; color: var(--muted); }
+
+      .chore-list {
+        list-style: none; margin: 0; padding: 0;
+        display: flex; flex-direction: column; gap: 16px;
+        flex: 1 1 auto; min-height: 0; overflow-y: auto;
+      }
+      .chore {
+        width: 100%; min-height: 56px; display: flex; align-items: center; gap: 24px;
+        border: 3px solid var(--line); background: var(--sheet); border-radius: 22px;
+        padding: 22px 28px; font: inherit; font-size: 34px; font-weight: 700;
+        cursor: pointer; text-align: left; color: var(--text);
+      }
+      .chore .check {
+        flex: 0 0 auto; width: 64px; height: 64px; border-radius: 50%;
+        border: 4px solid var(--line); display: flex; align-items: center;
+        justify-content: center; color: #fff; font-size: 36px; font-weight: 800;
+      }
+      /* Done reads three redundant ways — fill, check, struck title — which is
+         what makes it legible from across a kitchen rather than only up close. */
+      .chore-done { border-color: var(--done); background: var(--done-soft); }
+      .chore-done .check { background: var(--done); border-color: var(--done); }
+      .chore-done .chore-title {
+        color: var(--muted); text-decoration: line-through; text-decoration-thickness: 3px;
+      }
+
+      .back-btn {
+        min-height: 72px; border: 3px solid var(--line); background: var(--sheet);
+        color: var(--text); border-radius: 18px; padding: 14px 32px;
+        font: inherit; font-size: 28px; font-weight: 800; cursor: pointer;
+      }
+
+      /* ---------- toast ---------- */
+      .toast {
+        position: absolute; left: 50%; transform: translateX(-50%); bottom: 48px;
+        display: flex; align-items: center; gap: 28px;
+        max-width: 900px; padding: 18px 18px 18px 32px; border-radius: 24px;
+        background: #221c33; color: #fff; box-shadow: 0 18px 44px rgba(20, 8, 45, 0.45);
+      }
+      .toast-failed { background: var(--danger); }
+      .toast-text { font-size: 28px; font-weight: 600; }
+      .toast-text strong { font-weight: 800; }
+      .toast-btn {
+        flex: 0 0 auto; min-height: 64px; min-width: 150px; padding: 0 32px;
+        border: none; border-radius: 16px; background: #fff; color: #221c33;
+        font: inherit; font-size: 26px; font-weight: 800; cursor: pointer;
+      }
+      .toast-failed .toast-btn { color: var(--danger); }
+
+      /* ---------- offline banner: in flow, so it never covers the header ---------- */
+      .offline-banner {
+        margin: 16px 0 0; padding: 16px 24px; border-radius: 18px;
+        background: var(--danger-soft); border: 2px solid var(--danger);
+        color: var(--danger); font-size: 22px; font-weight: 700; text-align: center;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- ============================ FAMILY SCREEN ============================ -->
+    <p class="caption">Family screen — the resting state</p>
+    <div class="frame">
+      <div class="sheet">
+        <header class="sheet-head">
+          <h1 class="sheet-title">Example Household</h1>
+          <div class="when">
+            <span class="when-time">7:42 PM</span>
+            <span class="when-date">Friday, August 7</span>
+          </div>
+        </header>
+
+        <div class="tiles">
+          <!-- Adult One — #2563EB, 1 of 2 done -->
+          <button class="tile">
+            <span class="tile-face">
+              <svg class="ring" viewBox="0 0 160 160" aria-hidden="true">
+                <circle class="ring-track" cx="80" cy="80" r="70" />
+                <circle class="ring-fill" cx="80" cy="80" r="70" stroke="#2563EB"
+                        stroke-dasharray="219.9 439.8" transform="rotate(-90 80 80)" />
+              </svg>
+              <svg class="avatar" viewBox="0 0 100 100" aria-hidden="true">
+                <circle cx="50" cy="54" r="32" fill="#2563EB" />
+                <path d="M21.2 36 A34 34 0 0 1 78.8 36 Z" fill="#ffffff" />
+                <circle cx="39" cy="52" r="3.8" fill="#ffffff" />
+                <circle cx="61" cy="52" r="3.8" fill="#ffffff" />
+                <path d="M38 64 Q50 74 62 64" fill="none" stroke="#ffffff"
+                      stroke-width="4" stroke-linecap="round" />
+              </svg>
+            </span>
+            <span class="tile-name">Adult One</span>
+            <!-- pill ink is white: 5.17:1 on #2563EB -->
+            <span class="pill" style="background:#2563EB;color:#ffffff">1 to do</span>
+          </button>
+
+          <!-- Adult Two — #DB2777, nothing assigned today -->
+          <button class="tile">
+            <span class="tile-face">
+              <svg class="ring" viewBox="0 0 160 160" aria-hidden="true">
+                <circle class="ring-track" cx="80" cy="80" r="70" />
+                <circle class="ring-fill" cx="80" cy="80" r="70" stroke="#DB2777"
+                        stroke-dasharray="0 439.8" transform="rotate(-90 80 80)" />
+              </svg>
+              <svg class="avatar" viewBox="0 0 100 100" aria-hidden="true">
+                <circle cx="50" cy="54" r="32" fill="#DB2777" />
+                <rect x="16" y="42" width="14" height="38" rx="7" fill="#ffffff" />
+                <rect x="70" y="42" width="14" height="38" rx="7" fill="#ffffff" />
+                <path d="M19 40 A34 34 0 0 1 81 40 Z" fill="#ffffff" />
+                <circle cx="39" cy="52" r="3.8" fill="#ffffff" />
+                <circle cx="61" cy="52" r="3.8" fill="#ffffff" />
+                <path d="M38 64 Q50 74 62 64" fill="none" stroke="#ffffff"
+                      stroke-width="4" stroke-linecap="round" />
+              </svg>
+            </span>
+            <span class="tile-name">Adult Two</span>
+            <span class="pill">Nothing today</span>
+          </button>
+
+          <!-- Kid One — #16A34A, 1 of 4 done. Ink flips to black: 6.37:1 vs 3.30:1 -->
+          <button class="tile">
+            <span class="tile-face">
+              <svg class="ring" viewBox="0 0 160 160" aria-hidden="true">
+                <circle class="ring-track" cx="80" cy="80" r="70" />
+                <circle class="ring-fill" cx="80" cy="80" r="70" stroke="#16A34A"
+                        stroke-dasharray="110 439.8" transform="rotate(-90 80 80)" />
+              </svg>
+              <svg class="avatar" viewBox="0 0 100 100" aria-hidden="true">
+                <circle cx="50" cy="54" r="32" fill="#16A34A" />
+                <path d="M19 40 A34 34 0 0 1 81 40 Z" fill="#141019" />
+                <circle cx="28" cy="34" r="8" fill="#141019" />
+                <circle cx="50" cy="26" r="9" fill="#141019" />
+                <circle cx="72" cy="34" r="8" fill="#141019" />
+                <circle cx="39" cy="52" r="3.8" fill="#141019" />
+                <circle cx="61" cy="52" r="3.8" fill="#141019" />
+                <path d="M38 64 Q50 74 62 64" fill="none" stroke="#141019"
+                      stroke-width="4" stroke-linecap="round" />
+              </svg>
+            </span>
+            <span class="tile-name">Kid One</span>
+            <span class="pill" style="background:#16A34A;color:#141019">3 to do</span>
+          </button>
+
+          <!-- Kid Two — #EA580C, all 3 done -->
+          <button class="tile">
+            <span class="tile-face">
+              <svg class="ring" viewBox="0 0 160 160" aria-hidden="true">
+                <circle class="ring-track" cx="80" cy="80" r="70" />
+                <circle class="ring-fill" cx="80" cy="80" r="70" stroke="#EA580C"
+                        stroke-dasharray="439.8 439.8" transform="rotate(-90 80 80)" />
+              </svg>
+              <svg class="avatar" viewBox="0 0 100 100" aria-hidden="true">
+                <circle cx="50" cy="54" r="32" fill="#EA580C" />
+                <circle cx="80" cy="58" r="10" fill="#141019" />
+                <path d="M19 40 A34 34 0 0 1 81 40 Z" fill="#141019" />
+                <circle cx="39" cy="52" r="3.8" fill="#141019" />
+                <circle cx="61" cy="52" r="3.8" fill="#141019" />
+                <path d="M38 64 Q50 74 62 64" fill="none" stroke="#141019"
+                      stroke-width="4" stroke-linecap="round" />
+              </svg>
+            </span>
+            <span class="tile-name">Kid Two</span>
+            <span class="pill pill-done">All done</span>
+          </button>
+
+          <!-- Dependent One — face and name only. No ring, no count, not tappable. -->
+          <button class="tile tile-disabled" disabled>
+            <span class="tile-face">
+              <svg class="avatar" viewBox="0 0 100 100" aria-hidden="true">
+                <circle cx="50" cy="54" r="32" fill="#7C3AED" />
+                <path d="M17.5 44 A34 34 0 0 1 82.5 44 Z" fill="#ffffff" />
+                <circle cx="50" cy="15" r="7" fill="#ffffff" />
+                <circle cx="39" cy="52" r="3.8" fill="#ffffff" />
+                <circle cx="61" cy="52" r="3.8" fill="#ffffff" />
+                <path d="M38 64 Q50 74 62 64" fill="none" stroke="#ffffff"
+                      stroke-width="4" stroke-linecap="round" />
+              </svg>
+            </span>
+            <span class="tile-name">Dependent One</span>
+            <span class="pill pill-none">&mdash;</span>
+          </button>
+        </div>
+
+        <p class="reset-strip">
+          <span class="reset-clock" aria-hidden="true">&#9200;</span>
+          <span><strong>8:00 PM</strong> Family Reset</span>
+          <span class="reset-note">every night</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- ============================ PERSON SCREEN ============================ -->
+    <p class="caption">Person screen — after tapping a tile, with the Undo toast</p>
+    <div class="frame">
+      <div class="sheet">
+        <header class="sheet-head">
+          <button class="back-btn"><span aria-hidden="true">&lsaquo;</span> Back</button>
+          <div class="when">
+            <span class="when-time">7:42 PM</span>
+            <span class="when-date">Friday, August 7</span>
+          </div>
+        </header>
+
+        <div class="person-head">
+          <span class="person-face">
+            <svg class="avatar" viewBox="0 0 100 100" aria-hidden="true">
+              <circle cx="50" cy="54" r="32" fill="#16A34A" />
+              <path d="M19 40 A34 34 0 0 1 81 40 Z" fill="#141019" />
+              <circle cx="28" cy="34" r="8" fill="#141019" />
+              <circle cx="50" cy="26" r="9" fill="#141019" />
+              <circle cx="72" cy="34" r="8" fill="#141019" />
+              <circle cx="39" cy="52" r="3.8" fill="#141019" />
+              <circle cx="61" cy="52" r="3.8" fill="#141019" />
+              <path d="M38 64 Q50 74 62 64" fill="none" stroke="#141019"
+                    stroke-width="4" stroke-linecap="round" />
+            </svg>
+          </span>
+          <div class="person-meta">
+            <h2 class="person-name">Kid One</h2>
+            <div class="bar"><div class="bar-fill" style="width:25%;background:#16A34A"></div></div>
+            <p class="person-count">1 of 4 done</p>
+          </div>
+        </div>
+
+        <ul class="chore-list">
+          <li>
+            <button class="chore chore-done">
+              <span class="check" aria-hidden="true">&#10003;</span>
+              <span class="chore-title">Feed the dog</span>
+            </button>
+          </li>
+          <li>
+            <button class="chore">
+              <span class="check" aria-hidden="true"></span>
+              <span class="chore-title">Unload the dishwasher</span>
+            </button>
+          </li>
+          <li>
+            <button class="chore">
+              <span class="check" aria-hidden="true"></span>
+              <span class="chore-title">Put away laundry</span>
+            </button>
+          </li>
+          <li>
+            <button class="chore">
+              <span class="check" aria-hidden="true"></span>
+              <span class="chore-title">Take out the recycling</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Appears optimistically on tap. If the write fails it is REPLACED by
+           the failure variant below, so the correction lands where the kid is
+           already looking. -->
+      <div class="toast">
+        <span class="toast-text"><strong>Nice!</strong> Feed the dog</span>
+        <button class="toast-btn">Undo</button>
+      </div>
+    </div>
+
+    <!-- ======================= FAILURE / OFFLINE STATES ======================= -->
+    <p class="caption">Offline banner over a stale board, and the failed-write toast</p>
+    <div class="frame">
+      <div class="sheet">
+        <header class="sheet-head">
+          <button class="back-btn"><span aria-hidden="true">&lsaquo;</span> Back</button>
+          <div class="when">
+            <span class="when-time">7:44 PM</span>
+            <span class="when-date">Friday, August 7</span>
+          </div>
+        </header>
+
+        <!-- Distinct from BOTH "no chores today" and the hard error card. The
+             board stays on screen; it is never blanked, because a blank board
+             reads as "all done". -->
+        <p class="offline-banner">
+          &#9888; Can't reach the server. Showing the last board that loaded.
+        </p>
+
+        <div class="person-head">
+          <span class="person-face">
+            <svg class="avatar" viewBox="0 0 100 100" aria-hidden="true">
+              <circle cx="50" cy="54" r="32" fill="#16A34A" />
+              <path d="M19 40 A34 34 0 0 1 81 40 Z" fill="#141019" />
+              <circle cx="28" cy="34" r="8" fill="#141019" />
+              <circle cx="50" cy="26" r="9" fill="#141019" />
+              <circle cx="72" cy="34" r="8" fill="#141019" />
+              <circle cx="39" cy="52" r="3.8" fill="#141019" />
+              <circle cx="61" cy="52" r="3.8" fill="#141019" />
+              <path d="M38 64 Q50 74 62 64" fill="none" stroke="#141019"
+                    stroke-width="4" stroke-linecap="round" />
+            </svg>
+          </span>
+          <div class="person-meta">
+            <h2 class="person-name">Kid One</h2>
+            <div class="bar"><div class="bar-fill" style="width:25%;background:#16A34A"></div></div>
+            <p class="person-count">1 of 4 done</p>
+          </div>
+        </div>
+
+        <ul class="chore-list">
+          <li>
+            <button class="chore chore-done">
+              <span class="check" aria-hidden="true">&#10003;</span>
+              <span class="chore-title">Feed the dog</span>
+            </button>
+          </li>
+          <li>
+            <button class="chore">
+              <span class="check" aria-hidden="true"></span>
+              <span class="chore-title">Unload the dishwasher</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="toast toast-failed">
+        <span class="toast-text">
+          <strong>Didn't save.</strong> Unload the dishwasher is still to do.
+        </span>
+        <button class="toast-btn">OK</button>
+      </div>
+    </div>
+  </body>
+</html>

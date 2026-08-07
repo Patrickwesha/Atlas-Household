@@ -17,6 +17,13 @@
     "jsx": "react-jsx",
 
     /* Linting */
+    /* strict (and with it strictNullChecks) is what actually holds the board's
+       error handling together: `Board | null` and `error: string | null` carry
+       the rule that a failed poll must never blank the board — a blank board on
+       a kitchen wall reads as "everything's done". Without this the rule was
+       only a comment, and `setBoard(null)` in a catch block type-checked fine.
+       Enabling it produced zero errors. */
+    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,

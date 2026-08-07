@@ -1,16 +1,60 @@
+/* Atlas Household kiosk.
+ *
+ * Built for one screen: a wall-mounted iPad Pro 12.9" in landscape, 1366x1024
+ * CSS px at roughly 132 CSS px per inch. Every size below is chosen against
+ * that, not against a phone.
+ *
+ * The distance rule: at six feet a 20px glyph subtends about 5 arcminutes,
+ * which is the threshold where a letter is merely resolvable. Comfortable
+ * glance-reading wants two to three times that. So nothing that carries
+ * information is under 20px, counts are 26px+, and names are 40px+.
+ */
+
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 400 800;
+  /* `block`, not `swap`. A swap reflows the tile grid a beat after paint, and
+     on a touch kiosk a finger already on its way down lands on a tile that
+     moved. The file is local and preloaded, so the block period is very short. */
+  font-display: block;
+  src: url('/fonts/nunito-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: block;
+  src: url('/fonts/nunito-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 * {
   box-sizing: border-box;
 }
 
 :root {
-  --bg: #f1f5f9;
-  --card: #ffffff;
-  --text: #0f172a;
-  --muted: #64748b;
-  --line: #e2e8f0;
+  --sheet: #ffffff;
+  --text: #1e1b2e;
+  --muted: #635c7a;
+  --line: #e7e3f0;
   --danger: #b91c1c;
-  --accent: #2563eb;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --danger-soft: #fdf0f0;
+  /* green-700, not green-600: white text on #16A34A is only 3.30:1. */
+  --done: #15803d;
+  --done-soft: #eefaf1;
+  --accent: #6d28d9;
+
+  /* ui-rounded resolves to SF Pro Rounded on iPadOS, so if the woff2 never
+     arrives the board still reads as friendly rather than dropping to Helvetica. */
+  font-family: 'Nunito', ui-rounded, 'SF Pro Rounded', -apple-system, 'Segoe UI',
+    system-ui, sans-serif;
+  color: var(--text);
 }
 
 html,
@@ -22,7 +66,7 @@ body,
 }
 
 body {
-  background: var(--bg);
+  background: #5b21b6;
   color: var(--text);
   /* Kiosk: no accidental scroll, zoom, text-select, or tap flash. */
   overflow: hidden;
@@ -36,8 +80,9 @@ body {
   width: 100%;
   display: flex;
   flex-direction: column;
-  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
-    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background: linear-gradient(160deg, #8b5cf6 0%, #7c3aed 38%, #5b21b6 100%);
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
 }
 
 .center {
@@ -46,88 +91,262 @@ body {
   text-align: center;
 }
 
+.sheet {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--sheet);
+  border-radius: 36px;
+  padding: 28px 36px 32px;
+  box-shadow: 0 24px 60px rgba(30, 12, 70, 0.32);
+}
+
+.sheet-narrow {
+  flex: 0 1 auto;
+  max-width: 560px;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+}
+
 .muted {
   color: var(--muted);
-  font-size: 1.5rem;
+  font-size: 1.6rem;
 }
 
-/* ---------- member tiles ---------- */
-.board-title {
-  font-size: 2.5rem;
-  margin: 0 0 24px;
-  text-align: center;
+/* ---------- sheet header: title / back, clock, date ---------- */
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--line);
 }
 
+.sheet-title {
+  font-size: 2.75rem;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+}
+
+.when-time {
+  font-size: 3.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.when-date {
+  font-size: 1.375rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ---------- family screen ---------- */
 .tiles {
   flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  /* Let the row take the height it is given rather than floating in the middle
+     of the sheet — a bigger tile is a bigger target for a kid in a hurry. */
+  grid-auto-rows: minmax(320px, 470px);
   gap: 20px;
   align-content: center;
+  padding: 20px 0;
 }
 
 .tile {
-  border: none;
-  border-radius: 24px;
-  color: #fff;
-  padding: 32px;
-  min-height: 30vh;
+  border: 3px solid var(--line);
+  border-radius: 28px;
+  background: var(--sheet);
+  color: var(--text);
+  font: inherit;
+  padding: 32px 16px;
+  min-height: 56px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 20px;
   cursor: pointer;
-  font: inherit;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-  transition: transform 0.05s ease;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 14px rgba(30, 12, 70, 0.07);
+  /* Never `transition: all`. Only the press eases; state changes must snap, so
+     a rollback is never mistaken for a successful tap. */
+  transition: transform 0.06s ease;
 }
+
 .tile:active {
   transform: scale(0.97);
 }
+
 .tile-disabled,
 .tile-disabled:active {
-  opacity: 0.45;
+  opacity: 0.5;
   cursor: default;
   box-shadow: none;
+  /* Kills the press feedback, so a tap feels inert rather than broken. */
   transform: none;
 }
-.tile-name {
-  font-size: 2.4rem;
-  font-weight: 700;
-}
-.tile-sub {
-  font-size: 1.4rem;
-  opacity: 0.95;
+
+.tile-face {
+  position: relative;
+  width: 172px;
+  height: 172px;
+  flex: 0 0 auto;
 }
 
-/* ---------- a member's chores ---------- */
-.chores-screen {
-  overflow: hidden;
+.ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
-.chores-header {
+
+.ring-track {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 11;
+}
+
+.ring-fill {
+  fill: none;
+  stroke-width: 11;
+  stroke-linecap: round;
+}
+
+.avatar {
+  position: absolute;
+  inset: 20px;
+  width: calc(100% - 40px);
+  height: calc(100% - 40px);
+}
+
+.tile-name {
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  /* Reserve two lines for every name, so a long one wrapping doesn't push its
+     count pill out of line with the others. The row of counts is the thing
+     that gets scanned from across the kitchen; it has to sit level. */
+  min-height: 2.2em;
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
 }
-.chores-header h1 {
-  font-size: 2.6rem;
-  margin: 0;
-}
-.back-btn {
-  border: 2px solid var(--muted);
-  background: var(--card);
+
+.pill {
+  font-size: 1.625rem;
+  font-weight: 700;
+  padding: 8px 20px;
+  border-radius: 999px;
+  background: var(--line);
   color: var(--text);
-  border-radius: 16px;
-  padding: 16px 28px;
-  font-size: 1.5rem;
-  cursor: pointer;
-  font: inherit;
+  white-space: nowrap;
 }
-.back-btn:active {
-  transform: scale(0.97);
+
+.pill-done {
+  background: var(--done);
+  color: #ffffff;
+}
+
+.pill-none {
+  background: transparent;
+  color: var(--muted);
+}
+
+/* Schedule, not a task. Flat, uninteractive, visibly a different kind of thing
+   from the tiles above it. */
+.reset-strip {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 24px;
+  border-radius: 20px;
+  background: #f6f3fc;
+  border: 2px dashed #ded5f2;
+  color: var(--muted);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.reset-strip strong {
+  color: var(--text);
+  font-weight: 800;
+  margin-right: 8px;
+}
+
+.reset-clock {
+  font-size: 1.75rem;
+}
+
+.reset-note {
+  margin-left: auto;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+/* ---------- one person's chores ---------- */
+.person-head {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 24px 0 20px;
+}
+
+.person-face {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  flex: 0 0 auto;
+}
+
+.person-face .avatar {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.person-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.person-name {
+  font-size: 2.75rem;
+  font-weight: 800;
+  margin: 0 0 12px;
+}
+
+.bar {
+  height: 20px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.person-count {
+  margin: 10px 0 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .chore-list {
@@ -140,109 +359,228 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
+
 .chore {
   width: 100%;
+  min-height: 56px;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 24px;
   border: 3px solid var(--line);
-  background: var(--card);
-  border-radius: 20px;
-  padding: 28px;
-  font-size: 2rem;
+  background: var(--sheet);
+  border-radius: 22px;
+  padding: 22px 28px;
+  font: inherit;
+  font-size: 2.125rem;
+  font-weight: 700;
   cursor: pointer;
   text-align: left;
   color: var(--text);
-  font: inherit;
-  transition: transform 0.05s ease;
+  transition: transform 0.06s ease;
 }
+
 .chore:active {
   transform: scale(0.99);
 }
+
 .chore .check {
   flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-  border: 3px solid #cbd5e1;
+  border: 4px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 1.8rem;
-  font-weight: 700;
+  color: #ffffff;
+  font-size: 2.25rem;
+  font-weight: 800;
+  /* No transition: the done state must snap on and snap off, so a failed tap
+     that rolls back is visibly a reversal and not a slow fade. */
 }
+
+/* Done reads three redundant ways — fill, check, struck title — which is what
+   makes it legible from across a kitchen rather than only up close. */
 .chore-done {
-  opacity: 0.6;
+  border-color: var(--done);
+  background: var(--done-soft);
 }
-.chore-done .chore-title {
-  text-decoration: line-through;
-}
+
 .chore-done .check {
-  border: none;
+  background: var(--done);
+  border-color: var(--done);
 }
+
+.chore-done .chore-title {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 3px;
+}
+
 .big-empty {
-  font-size: 2rem;
+  font-size: 2.25rem;
   text-align: center;
-  margin-top: 15vh;
+  margin-top: 12vh;
+}
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(28px, env(safe-area-inset-bottom));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  max-width: min(900px, calc(100% - 64px));
+  padding: 18px 18px 18px 32px;
+  border-radius: 24px;
+  background: #221c33;
+  color: #ffffff;
+  box-shadow: 0 18px 44px rgba(20, 8, 45, 0.45);
+}
+
+.toast-failed {
+  background: var(--danger);
+}
+
+.toast-text {
+  font-size: 1.75rem;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast-text strong {
+  font-weight: 800;
+}
+
+.toast-btn {
+  flex: 0 0 auto;
+  min-height: 64px;
+  min-width: 150px;
+  padding: 0 32px;
+  border: none;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #221c33;
+  font: inherit;
+  font-size: 1.625rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.06s ease;
+}
+
+.toast-failed .toast-btn {
+  color: var(--danger);
+}
+
+.toast-btn:active {
+  transform: scale(0.97);
+}
+
+/* ---------- offline banner (in flow: it must not cover the header) ---------- */
+.offline-banner {
+  margin: 16px 0 0;
+  padding: 16px 24px;
+  border-radius: 18px;
+  background: var(--danger-soft);
+  border: 2px solid var(--danger);
+  color: var(--danger);
+  font-size: 1.375rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 /* ---------- setup / error cards ---------- */
 .card {
-  background: var(--card);
-  border-radius: 24px;
-  padding: 40px;
-  max-width: 520px;
   width: 100%;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  text-align: center;
 }
+
 .card h1 {
-  font-size: 2rem;
+  font-size: 2.25rem;
+  font-weight: 800;
   margin: 0 0 12px;
 }
+
+.card p {
+  font-size: 1.5rem;
+}
+
 .error-card h1 {
   color: var(--danger);
 }
+
 .token-input {
   width: 100%;
-  font-size: 1.5rem;
-  padding: 18px;
-  border: 2px solid #cbd5e1;
-  border-radius: 14px;
-  margin: 20px 0;
   font: inherit;
-}
-.big-btn {
-  width: 100%;
   font-size: 1.5rem;
   padding: 20px;
-  border: none;
-  border-radius: 14px;
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-  font-weight: 600;
-  font-family: inherit;
+  border: 3px solid var(--line);
+  border-radius: 16px;
+  margin: 24px 0;
 }
+
+.big-btn {
+  width: 100%;
+  min-height: 56px;
+  font: inherit;
+  font-size: 1.5rem;
+  font-weight: 800;
+  padding: 20px;
+  border: none;
+  border-radius: 16px;
+  background: var(--accent);
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform 0.06s ease;
+}
+
 .big-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
+
 .big-btn:active:not(:disabled) {
   transform: scale(0.98);
 }
 
-/* ---------- offline banner ---------- */
-.offline-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  background: var(--danger);
-  color: #fff;
-  text-align: center;
-  padding: 14px;
-  font-size: 1.2rem;
-  z-index: 10;
+.back-btn {
+  min-height: 72px;
+  border: 3px solid var(--line);
+  background: var(--sheet);
+  color: var(--text);
+  border-radius: 18px;
+  padding: 14px 32px;
+  font: inherit;
+  font-size: 1.75rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.06s ease;
+}
+
+.back-btn:active {
+  transform: scale(0.97);
+}
+
+/* ---------- focus ---------- */
+:focus-visible {
+  outline: 4px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile,
+  .chore,
+  .back-btn,
+  .big-btn,
+  .toast-btn {
+    transition: none;
+  }
 }
