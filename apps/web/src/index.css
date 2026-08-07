@@ -3,14 +3,33 @@
 }
 
 :root {
-  --bg: #f1f5f9;
-  --card: #ffffff;
-  --text: #0f172a;
-  --muted: #64748b;
-  --line: #e2e8f0;
+  /* Ground */
+  --grad-from: #5b21b6;
+  --grad-to: #7c3aed;
+
+  /* Sheet and type */
+  --sheet: #ffffff;
+  --text: #111827;
+  --muted: #4b5563;
+  --line: #e5e7eb;
+  --tile-bg: #f7f5fd;
+  --tile-line: #e9e4f8;
+
+  --done: #15803d;
+  --done-soft: #dcfce7;
   --danger: #b91c1c;
-  --accent: #2563eb;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --accent: #6d28d9;
+
+  --radius-sheet: 32px;
+  --radius-tile: 24px;
+
+  /* Nunito, with a fallback chain that survives a dead Google Fonts CDN.
+     Avenir Next ships on iPadOS and is the closest rounded humanist match;
+     Trebuchet MS is the Android/Windows stand-in. The layout is sized off
+     rem/clamp rather than glyph widths, so a swapped face reflows nothing. */
+  font-family: 'Nunito', 'Avenir Next', Avenir, 'Trebuchet MS', system-ui, -apple-system,
+    sans-serif;
+  font-synthesis-weight: auto;
 }
 
 html,
@@ -22,13 +41,14 @@ body,
 }
 
 body {
-  background: var(--bg);
+  background: linear-gradient(160deg, var(--grad-from) 0%, var(--grad-to) 100%) fixed;
   color: var(--text);
   /* Kiosk: no accidental scroll, zoom, text-select, or tap flash. */
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .screen {
@@ -36,8 +56,8 @@ body {
   width: 100%;
   display: flex;
   flex-direction: column;
-  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
-    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
 }
 
 .center {
@@ -46,88 +66,224 @@ body {
   text-align: center;
 }
 
+.sheet {
+  background: var(--sheet);
+  border-radius: var(--radius-sheet);
+  box-shadow: 0 24px 60px rgba(30, 8, 70, 0.32);
+  padding: clamp(18px, 2.4vh, 28px) clamp(20px, 2.4vw, 32px);
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 1.8vh, 22px);
+  overflow: hidden;
+}
+
 .muted {
   color: var(--muted);
-  font-size: 1.5rem;
+  font-size: 1.4rem;
+}
+.loading {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+/* ---------- clock / date header ---------- */
+.clock {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex: 0 0 auto;
+}
+.clock-time {
+  font-size: clamp(2rem, 4.4vw, 2.9rem);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+.clock-date {
+  font-size: clamp(0.95rem, 1.7vw, 1.2rem);
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.clock-household {
+  font-size: clamp(1.1rem, 2.2vw, 1.6rem);
+  font-weight: 800;
+  color: var(--accent);
+  text-align: right;
 }
 
 /* ---------- member tiles ---------- */
-.board-title {
-  font-size: 2.5rem;
-  margin: 0 0 24px;
-  text-align: center;
-}
-
 .tiles {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  grid-auto-rows: minmax(200px, auto);
+  gap: clamp(10px, 1.4vw, 18px);
   align-content: center;
 }
 
 .tile {
-  border: none;
-  border-radius: 24px;
-  color: #fff;
-  padding: 32px;
-  min-height: 30vh;
+  border: 3px solid var(--tile-line);
+  background: var(--tile-bg);
+  border-radius: var(--radius-tile);
+  padding: clamp(10px, 1.6vh, 18px) 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: clamp(6px, 1.1vh, 12px);
   cursor: pointer;
   font: inherit;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-  transition: transform 0.05s ease;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  min-height: 200px;
+  transition: transform 0.06s ease;
 }
 .tile:active {
   transform: scale(0.97);
 }
-.tile-disabled,
-.tile-disabled:active {
-  opacity: 0.45;
+/* The dependent's tile: a real presence on the board, not a disabled control.
+   Rendered as a div, so there is nothing to tap in the first place. */
+.tile-static {
   cursor: default;
-  box-shadow: none;
-  transform: none;
+  background: #fbfbfd;
+  border-style: dashed;
 }
 .tile-name {
-  font-size: 2.4rem;
-  font-weight: 700;
+  font-size: clamp(1.15rem, 2.2vw, 1.7rem);
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
 }
-.tile-sub {
-  font-size: 1.4rem;
-  opacity: 0.95;
+
+.pill {
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: clamp(0.95rem, 1.6vw, 1.2rem);
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+  /* Foreground is computed per member color in colors.ts — never assumed. */
+}
+.pill-done {
+  background: var(--done-soft);
+  color: #14532d;
+}
+.pill-none {
+  background: #eef0f4;
+  color: #3f4756;
+}
+
+/* ---------- progress ring ---------- */
+/* Sized here, not in JS, so the ring grows with the tile on a big wall iPad
+   and shrinks on a small one without the component knowing about viewports. */
+.ring {
+  position: relative;
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+}
+.ring-svg,
+.avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.ring-inner {
+  position: absolute;
+  inset: 11%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Bounded by width (five across) AND height (short landscape), so it never
+   pushes the pill off the tile on an odd aspect ratio. */
+.tile .ring {
+  width: min(clamp(88px, 12.5vw, 190px), 28vh);
+}
+.chores-header .ring {
+  width: clamp(72px, 9vw, 116px);
+}
+
+/* ---------- the 8pm family reset (static schedule, never a claim) ---------- */
+.reset-strip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #f4f1fd;
+  border: 2px solid #e5dcfb;
+  border-radius: 16px;
+  padding: 12px 18px;
+  font-size: clamp(0.9rem, 1.5vw, 1.15rem);
+  font-weight: 600;
+  color: #4c2f96;
+}
+.reset-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: 0 0 auto;
 }
 
 /* ---------- a member's chores ---------- */
-.chores-screen {
-  overflow: hidden;
-}
 .chores-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: clamp(12px, 1.6vw, 20px);
+  flex: 0 0 auto;
 }
 .chores-header h1 {
-  font-size: 2.6rem;
+  font-size: clamp(1.8rem, 3.6vw, 2.6rem);
+  font-weight: 800;
   margin: 0;
 }
 .back-btn {
-  border: 2px solid var(--muted);
-  background: var(--card);
+  border: 3px solid var(--line);
+  background: var(--sheet);
   color: var(--text);
-  border-radius: 16px;
-  padding: 16px 28px;
-  font-size: 1.5rem;
+  border-radius: 18px;
+  padding: 16px 26px;
+  min-height: 88px;
+  min-width: 132px;
+  font-size: clamp(1.1rem, 1.9vw, 1.4rem);
+  font-weight: 800;
   cursor: pointer;
-  font: inherit;
+  font-family: inherit;
+  flex: 0 0 auto;
 }
 .back-btn:active {
   transform: scale(0.97);
+}
+
+.progress {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.progress-track {
+  flex: 1 1 auto;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+.progress-label {
+  flex: 0 0 auto;
+  font-size: clamp(1rem, 1.7vw, 1.25rem);
+  font-weight: 800;
+  color: var(--muted);
 }
 
 .chore-list {
@@ -136,10 +292,11 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .chore {
   width: 100%;
@@ -147,58 +304,120 @@ body {
   align-items: center;
   gap: 20px;
   border: 3px solid var(--line);
-  background: var(--card);
+  background: var(--sheet);
   border-radius: 20px;
-  padding: 28px;
-  font-size: 2rem;
+  padding: 22px 26px;
+  min-height: 104px;
+  font-size: clamp(1.3rem, 2.4vw, 1.9rem);
+  font-weight: 700;
   cursor: pointer;
   text-align: left;
   color: var(--text);
-  font: inherit;
-  transition: transform 0.05s ease;
+  font-family: inherit;
+  transition: transform 0.06s ease;
 }
 .chore:active {
   transform: scale(0.99);
 }
 .chore .check {
   flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   border: 3px solid #cbd5e1;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 1.8rem;
-  font-weight: 700;
+  font-size: 1.9rem;
+  font-weight: 800;
 }
+/* Done: green, checked, title muted. Unmistakable from across the kitchen. */
 .chore-done {
-  opacity: 0.6;
+  background: var(--done-soft);
+  border-color: var(--done);
 }
 .chore-done .chore-title {
+  color: #3f6b4e;
   text-decoration: line-through;
 }
 .chore-done .check {
-  border: none;
+  background: var(--done);
+  border-color: var(--done);
 }
 .big-empty {
-  font-size: 2rem;
+  font-size: clamp(1.3rem, 2.4vw, 1.9rem);
+  font-weight: 700;
+  color: var(--muted);
   text-align: center;
-  margin-top: 15vh;
+  margin: auto;
+}
+
+/* ---------- undo toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(24px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: #111827;
+  color: #fff;
+  border-radius: 20px;
+  padding: 16px 18px 16px 22px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  max-width: min(92vw, 720px);
+}
+.toast-check {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--done);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+.toast-text {
+  font-size: clamp(1rem, 1.8vw, 1.3rem);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toast-undo {
+  flex: 0 0 auto;
+  min-height: 88px;
+  min-width: 132px;
+  border: none;
+  border-radius: 16px;
+  background: #fff;
+  color: #111827;
+  font-family: inherit;
+  font-size: clamp(1.05rem, 1.8vw, 1.3rem);
+  font-weight: 800;
+  cursor: pointer;
+}
+.toast-undo:active {
+  transform: scale(0.97);
 }
 
 /* ---------- setup / error cards ---------- */
 .card {
-  background: var(--card);
-  border-radius: 24px;
+  background: var(--sheet);
+  border-radius: var(--radius-sheet);
   padding: 40px;
-  max-width: 520px;
+  max-width: 560px;
   width: 100%;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 24px 60px rgba(30, 8, 70, 0.32);
 }
 .card h1 {
   font-size: 2rem;
+  font-weight: 800;
   margin: 0 0 12px;
 }
 .error-card h1 {
@@ -206,23 +425,24 @@ body {
 }
 .token-input {
   width: 100%;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   padding: 18px;
   border: 2px solid #cbd5e1;
   border-radius: 14px;
   margin: 20px 0;
-  font: inherit;
+  font-family: inherit;
 }
 .big-btn {
   width: 100%;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   padding: 20px;
+  min-height: 88px;
   border: none;
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--accent);
   color: #fff;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 800;
   font-family: inherit;
 }
 .big-btn:disabled {
@@ -234,6 +454,7 @@ body {
 }
 
 /* ---------- offline banner ---------- */
+/* Distinct from an empty board on purpose: a blank board reads as "all done". */
 .offline-banner {
   position: fixed;
   top: 0;
@@ -243,6 +464,7 @@ body {
   color: #fff;
   text-align: center;
   padding: 14px;
-  font-size: 1.2rem;
-  z-index: 10;
+  font-size: 1.15rem;
+  font-weight: 700;
+  z-index: 30;
 }
