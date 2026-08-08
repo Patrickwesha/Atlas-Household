@@ -1,8 +1,30 @@
 {
+  "_readme": [
+    "Copy this to seed.json (gitignored) and fill in real data. This repo is PUBLIC.",
+    "",
+    "chore_definitions is the slice-2 model: ONE definition per real-world chore,",
+    "with assignment rows carrying who-does-it-on-which-day. 'Kitchen reset' below",
+    "is ONE definition split across two adults — NOT two definitions. Splitting it",
+    "means maintaining the same chore twice, and the day the two copies diverge is",
+    "the day the arguing restarts.",
+    "",
+    "days: 'mon'..'sun', or the shorthand 'all'. Deliberately NOT the 0-6 integers",
+    "the database stores — a hand-edited file should not be the place where someone",
+    "has to remember whether 0 means Monday or Sunday.",
+    "",
+    "cadence is descriptive only ('daily' | 'weekly'). The schedule is the days.",
+    "cutoff_time is Phase 2 and is read by nothing yet; null is correct for now.",
+    "",
+    "A dependent must never appear in assignments: the API refuses a dependent",
+    "completion and the kiosk gives them nothing to press, so the chore would",
+    "materialize into a row nobody can ever clear. seed.py refuses it."
+  ],
+
   "household": {
     "id": "00000000-0000-0000-0000-000000000001",
     "name": "Example Household"
   },
+
   "members": [
     { "id": "00000000-0000-0000-0000-000000000002", "key": "adult_one",     "name": "Adult One",     "role": "adult",     "color": "#2563EB" },
     { "id": "00000000-0000-0000-0000-000000000003", "key": "adult_two",     "name": "Adult Two",     "role": "adult",     "color": "#DB2777" },
@@ -10,8 +32,71 @@
     { "id": "00000000-0000-0000-0000-000000000005", "key": "kid_two",       "name": "Kid Two",       "role": "kid",       "color": "#EA580C" },
     { "id": "00000000-0000-0000-0000-000000000006", "key": "dependent_one", "name": "Dependent One", "role": "dependent", "color": "#7C3AED" }
   ],
-  "chores_today": [
-    { "id": "00000000-0000-0000-0000-000000000007", "assignee": "adult_one", "title": "Example chore A" },
-    { "id": "00000000-0000-0000-0000-000000000008", "assignee": "kid_one",   "title": "Example chore B" }
+
+  "chore_definitions": [
+    {
+      "id": "00000000-0000-0000-0000-00000000000a",
+      "name": "Kitchen reset",
+      "area": "Kitchen",
+      "cadence": "daily",
+      "cutoff_time": null,
+      "sort_order": 10,
+      "is_active": true,
+      "assignments": [
+        { "member": "adult_one", "days": ["mon", "wed", "fri"] },
+        { "member": "adult_two", "days": ["tue", "thu", "sat"] }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000000b",
+      "name": "Take out the trash",
+      "area": "Kitchen",
+      "cadence": "weekly",
+      "cutoff_time": null,
+      "sort_order": 20,
+      "is_active": true,
+      "assignments": [
+        { "member": "kid_one", "days": ["tue", "fri"] }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000000c",
+      "name": "15-minute family reset",
+      "area": null,
+      "cadence": "daily",
+      "cutoff_time": null,
+      "sort_order": 30,
+      "is_active": true,
+      "assignments": [
+        { "member": "adult_one", "days": "all" },
+        { "member": "adult_two", "days": "all" },
+        { "member": "kid_one",   "days": "all" },
+        { "member": "kid_two",   "days": "all" }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000000d",
+      "name": "Deep clean — bathrooms",
+      "area": "Bathrooms",
+      "cadence": "weekly",
+      "cutoff_time": null,
+      "sort_order": 40,
+      "is_active": true,
+      "assignments": [
+        { "member": "kid_two", "days": ["sat"] }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000000e",
+      "name": "Deep clean — bedrooms",
+      "area": "Bedrooms",
+      "cadence": "weekly",
+      "cutoff_time": null,
+      "sort_order": 50,
+      "is_active": true,
+      "assignments": [
+        { "member": "kid_one", "days": ["sat"] }
+      ]
+    }
   ]
 }

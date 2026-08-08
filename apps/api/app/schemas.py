@@ -39,3 +39,11 @@ class Board(BaseModel):
 
 class CompleteRequest(BaseModel):
     completed_by: UUID
+
+
+class MaterializeResult(BaseModel):
+    """What the nightly cron reports. `created` is 0 on every run after the
+    day's first — that is success, not a failure to find work."""
+
+    due_on: date
+    created: int

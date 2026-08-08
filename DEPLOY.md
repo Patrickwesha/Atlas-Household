@@ -161,6 +161,110 @@ Two things worth checking with the actual kids, which no instrument settles:
 whether a 2-second cooldown after a tap reads as "it heard me" or as "it's
 broken", and whether they notice a list continues below the fold at all.
 
+## Part F — the nightly materializer (slice 2)
+
+This is what stopped the board going empty every morning. Chores are now
+**definitions** (`chore_definitions`) plus **assignments** (who, which weekday),
+and a nightly job turns them into that day's `chore_instances`.
+
+### F.1 — Migrate the database (once)
+
+Migrations moved to Alembic. `0001` was applied by hand before Alembic existed,
+so its version table has to be started in sync — **stamp first, then upgrade**:
+
+```
+cd apps/api
+uv run alembic current                # expect: empty, the first time
+uv run alembic stamp 0001             # says "0001 already happened". Applies no DDL.
+uv run alembic upgrade head           # applies 0002
+uv run alembic current                # expect: 0002 (head)
+```
+
+Runs against `DIRECT_URL` and **refuses a `-pooler` host**. If you want to read
+the SQL before it touches Neon: `uv run alembic upgrade head --sql`.
+
+> **Stamp before upgrade, not after.** Running `upgrade head` on an un-stamped
+> database makes Alembic try to `create table households` on a database that
+> already has one, and the error it prints will not mention stamping.
+
+### F.2 — Load your chore definitions
+
+Put them in the gitignored `seed.json` (see `seed.example.json` for the shape —
+day names, not the 0-6 integers the database stores), then:
+
+```
+uv run python seed.py                              # definitions + assignments
+uv run python materialize.py --dry-run             # who gets what today. Writes nothing.
+uv run python materialize.py --date 2026-08-29 --dry-run   # check a Saturday without waiting
+```
+
+`seed.py` refuses a definition assigned to a **dependent** — the API rejects a
+dependent completion and the kiosk gives them nothing to press, so it would
+materialize into a row nobody can ever clear.
+
+### F.3 — Set `CRON_SECRET` and deploy
+
+Add `CRON_SECRET` to the API project's environment variables, then **redeploy**
+(env changes need a new deploy). Confirm the jobs appear under
+**API project → Settings → Cron Jobs**, and use **Run** there to trigger one by
+hand. A successful run returns `{"due_on": "...", "created": N}`.
+
+### F.4 — The three layers, and why there are three
+
+| Layer | When | What it is for |
+|---|---|---|
+| Cron 1 | `0 8 * * *` UTC | The normal path. Creates tomorrow's board overnight. |
+| Cron 2 | `0 11 * * *` UTC | Rescue. A true no-op if cron 1 worked. |
+| Board self-heal | any board load on a day with **zero** rows | Last resort, if both crons failed. |
+
+**Vercel Hobby cron constraints** (verified, and they shape all of the above):
+once per day maximum *per job* (100 jobs per project, so two entries are fine),
+**UTC only**, and the job fires **anywhere inside the hour you specify** —
+`0 8 * * *` can run at 08:47.
+
+**What that means in Chicago time, including DST:**
+
+| Cron | Summer (CDT, UTC−5) | Winter (CST, UTC−6) |
+|---|---|---|
+| `0 8 * * *` | 3:00–3:59 am | 2:00–2:59 am |
+| `0 11 * * *` | 6:00–6:59 am | 5:00–5:59 am |
+
+Both land after midnight and before anyone is up, in both halves of the year, so
+there is no seasonal adjustment to remember. That is why the hour was chosen.
+
+The self-heal only ever fires on a day with **no** instances at all, so it cannot
+duplicate a chore or resurrect one that was cleared. One consequence worth
+knowing: **deleting a day's instances by hand no longer sticks** — the next board
+load recreates them. Retire a chore by setting `is_active = false` on its
+definition, not by deleting rows.
+
+### F.5 — If a night is missed
+
+You should not need this, but it is one command:
+
+```
+cd apps/api && uv run python materialize.py            # today
+uv run python materialize.py --date 2026-08-15         # a specific day
+```
+
+Idempotent — running it against a day that already has its chores creates
+nothing and touches no completion.
+
+### F.6 — Checking it locally before you trust it
+
+Both scripts want a **scratch** database and refuse a Neon URL:
+
+```
+VERIFY_DATABASE_URL=postgresql://localhost/atlas_verify uv run python verify_materializer.py
+VERIFY_DATABASE_URL=postgresql://localhost/atlas_verify uv run python verify_api.py
+```
+
+The first pins the materializer's guarantees (weekday routing, idempotency by row
+identity rather than row count, completed work surviving a re-run, slice-1 rows
+surviving, the title snapshot). The second boots the API and pins the two tokens
+not overlapping and the self-heal's bounds — including that a materializer which
+raises still returns a 200 board.
+
 ## Troubleshooting
 
 - **Preview deployments fail to load the board — EXPECTED.** Every branch/PR push
@@ -172,10 +276,24 @@ broken", and whether they notice a list continues below the fold at all.
   Protection / Vercel Authentication** is intercepting with a login page. Fix:
   API project → **Settings → Deployment Protection** → turn **Vercel
   Authentication** off for production so the browser can call the API.
-- **Board empty in production.** The seed pins instances to the date you last
-  seeded (strict `on conflict do nothing`). Re-date them by running
-  `uv run python seed.py --refresh` locally against the same Neon DB. Automatic
-  day-over-day boards are the materializer, a later slice.
+- **Board empty in production.** Since slice 2 this no longer means "a run was
+  missed" — three layers would all have had to fail (Part F.4), and the board
+  self-heals on load anyway. It almost always means **no chore is scheduled for
+  that weekday**: no active definition is assigned to anyone on, say, a Sunday.
+  Check it in one command, without guessing:
+
+  ```
+  cd apps/api && uv run python materialize.py --dry-run
+  ```
+
+  It prints the weekday it resolved and who is scheduled. "Nothing scheduled for
+  this weekday" is your answer — fix it in `seed.json` and re-run `seed.py`.
+  `seed.py --refresh` is **not** the fix; it only re-dates the legacy
+  `chores_today` rows and has nothing to do with recurring chores.
+- **Cron shows as failed in Vercel.** A 401 means `CRON_SECRET` is unset or
+  differs between the cron and the environment — the endpoint fails closed on
+  purpose. Set it and **redeploy**; an env change alone does not affect a
+  deployment already built.
 - **Python version.** Vercel defaults to Python 3.12, matching the project. If a
   build uses an older Python, set it in the API project's settings.
 
@@ -191,6 +309,13 @@ never be committed; copy their values from your local `.env`.
 | `HOUSEHOLD_ID` | the UUID in your `.env` (must match `seed.json`) | Part A |
 | `APP_TIMEZONE` | `America/Chicago` | Part A |
 | `ALLOWED_ORIGINS` | `https://atlas-web-henna.vercel.app` (exact origin, no trailing slash) | **Part C**, after the web deploys |
+| `CRON_SECRET` | *(secret)* `openssl rand -hex 32` — a **different** value from `DEVICE_TOKEN` | **Part F**, before the first cron fires |
+
+> `CRON_SECRET` is deliberately not the device token. Different device, different
+> blast radius: rotating the iPad's token must not break the nightly job, and a
+> leaked cron secret must not be able to read the board. If it is unset, the
+> materializer endpoint **refuses every request, including Vercel's** — the
+> failure shows up as a red cron run, never as an open write endpoint.
 
 **Web project** (`apps/web`):
 

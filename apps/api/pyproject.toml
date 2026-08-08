@@ -10,13 +10,21 @@ dependencies = [
 ]
 
 [dependency-groups]
+# DEV ONLY. requirements.txt is generated with `uv export --no-dev`, so nothing
+# here reaches the Vercel build or the serverless function. Alembic in
+# particular must stay out of the runtime: migrations are applied from a
+# developer's terminal against DIRECT_URL, never by the deployed API.
 dev = [
+    "alembic>=1.18.0",
     "mypy>=2.3.0",
 ]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["app"]
+# The standalone scripts are checked too, not just the served application. They
+# talk to the same database with the same types, and the materializer CLI is how
+# a schedule gets proved correct before it goes on the wall.
+files = ["app", "seed.py", "materialize.py", "verify_materializer.py", "verify_api.py", "migrations"]
 plugins = ["pydantic.mypy"]
 check_untyped_defs = true
 ignore_missing_imports = true

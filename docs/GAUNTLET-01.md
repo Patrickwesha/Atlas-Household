@@ -532,9 +532,11 @@ still says "tap it again".
 5. Schema enforces none of the row-level assumptions: no
    `check ((completed_at is null) = (completed_by is null))`, no composite FK on
    household, no dependent constraint. *(Schema change → automatically here.)*
-6. `/docs`, `/redoc` and `/openapi.json` are unauthenticated and reachable in
-   production — `require_kiosk` is a router dependency, so it guards `/api/*`
-   only. One-line fix: `docs_url=None, redoc_url=None, openapi_url=None`.
+6. ~~`/docs`, `/redoc` and `/openapi.json` are unauthenticated and reachable in
+   production~~ — `require_kiosk` is a router dependency, so it guards `/api/*`
+   only. **FIXED in slice 2 phase 1** (`docs_url=None, redoc_url=None,
+   openapi_url=None`), because that slice added a write endpoint and publishing a
+   map of it was no longer merely untidy.
 7. `completed_by` is structurally incapable of recording who tapped: the client
    can only ever send the assignee of the row, so `completed_by = assignee_id`
    in 100% of rows. Verified: `select bool_and(completed_by = assignee_id) …` →
@@ -709,6 +711,12 @@ still says "tap it again".
    the error card and offline banner are separate code paths, so an empty board
    never reads as "the server is down". What *was* actionable about it — the
    celebration — is fixed as FIX NOW 15.
+
+   **RESOLVED in slice 2 phase 1.** The materializer now creates each day's
+   instances (two Vercel crons, plus a self-heal on the board for a day with no
+   rows at all). The "empty board" state still exists and is still correctly
+   distinguishable from a failure — but it now means *nothing is scheduled for
+   this weekday*, not *nobody re-seeded*. See `DEPLOY.md` Part F.
 5. **Gradient banding sits at the visibility threshold.** 22 flat bands of ≥10
    CSS px, median Weber contrast 0.48%, max 0.53%; detectability begins around
    0.5–1%. A headless screenshot cannot settle it — the panel's own dithering

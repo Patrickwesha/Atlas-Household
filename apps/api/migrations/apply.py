@@ -1,12 +1,20 @@
 """
-apply.py — apply the hand-written SQL migrations to Postgres (slice 1).
+apply.py — apply the hand-written SQL migrations to Postgres.
+
+RETIRED as of slice 2. It applied 0001_init.sql once, by hand, and that is the
+only .sql file it will ever find: from 0002 onward Alembic owns migrations (see
+apps/api/alembic.ini and migrations/versions/). Alembic's version table was
+brought in sync with what this script did via `alembic stamp`, so running this
+again against a live database is unnecessary, not dangerous — 0001_init.sql's
+CREATE TABLEs would simply fail on a schema that already has them.
+
+It stays in the tree because it is the record of how the initial schema actually
+got applied, and because it is still the fastest way to stand up a scratch
+database that provably matches production's starting point.
 
 Reads DIRECT_URL (the non-pooled Neon endpoint) from the environment, falling
-back to the repo-root .env if it isn't already set. DDL must NOT run through
-Neon's transaction pooler, so this refuses a "-pooler" host and never touches
-DATABASE_URL. Each .sql file controls its own transaction (begin/commit inside),
-applied in filename order. From 0002 onward Alembic owns migrations and this
-script is retired.
+back to the repo-root .env. Each .sql file controls its own transaction
+(begin/commit inside), applied in filename order.
 
 Run from apps/api:
     uv run python migrations/apply.py
@@ -14,39 +22,27 @@ Run from apps/api:
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 import psycopg
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent      # apps/api/migrations
-REPO_ROOT = MIGRATIONS_DIR.parents[2]                 # .../Atlas-Household
 
+# Running a script inside migrations/ puts migrations/ on sys.path, not apps/api,
+# so `app` is not importable without this. seed.py and materialize.py live at the
+# apps/api root and need no equivalent. Alembic's env.py gets the same effect from
+# `prepend_sys_path = .` in alembic.ini.
+sys.path.insert(0, str(MIGRATIONS_DIR.parent))
 
-def load_env_file(path: Path) -> None:
-    """Tiny .env loader (KEY=VALUE per line). No dependency, and it never
-    overrides a value already present in the real environment."""
-    if not path.exists():
-        return
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)               # split once: URLs contain '='
-        os.environ.setdefault(key.strip(), value.strip())
+from app.envfile import DirectUrlError, resolve_direct_url  # noqa: E402
 
 
 def main() -> int:
-    load_env_file(REPO_ROOT / ".env")
-
-    direct_url = os.environ.get("DIRECT_URL", "").strip()
-    if not direct_url:
-        print("ERROR: DIRECT_URL is not set (checked the environment and repo .env).", file=sys.stderr)
-        return 1
-    if "-pooler" in direct_url:
-        print("ERROR: DIRECT_URL points at the POOLED host ('-pooler'). Migrations must", file=sys.stderr)
-        print("use the DIRECT endpoint — refusing to run DDL through Neon's pooler.", file=sys.stderr)
+    try:
+        direct_url = resolve_direct_url()
+    except DirectUrlError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
     sql_files = sorted(MIGRATIONS_DIR.glob("[0-9][0-9][0-9][0-9]_*.sql"))

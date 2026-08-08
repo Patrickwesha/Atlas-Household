@@ -30,25 +30,60 @@ against `DEVICE_TOKEN` from server env by a single FastAPI dependency called
   gitignored `seed.json`. Only `seed.example.json` with placeholder names is
   committed.
 - **Do not create or alter database migrations unless I explicitly ask.**
+  Alembic owns migrations from `0002` onward (`apps/api/alembic.ini`,
+  `apps/api/migrations/versions/`). `0001` was applied by hand and is `stamp`ed,
+  never run. Migrations connect through `DIRECT_URL` and **refuse a `-pooler`
+  host** — DDL must never go through Neon's transaction pooler. There are no
+  SQLAlchemy models, so **autogenerate is not used**; every revision is
+  hand-written.
 - **Do not add dependencies without asking.**
 - **All auth is a FastAPI dependency.** Never branch on token type inside a
   shared dependency. Add a new dependency instead. `require_kiosk` is the only
   one today. A `current_adult` dependency can be added later without touching
   it.
 
-## Scope: current slice
+## Scope: current slice — slice 2, phase 1 (recurring chores)
 
-One thin vertical slice, deployed, that a kid can tap on the iPad.
+Slice 1 (the kiosk) is deployed and in daily use. Phase 1 makes the board fill
+itself so nobody runs `seed.py --refresh` every morning.
 
 In scope:
 
-- Tables: `households`, `members`, `chore_instances`. Nothing else.
-- API: `GET /api/board` and `POST /api/instances/{id}/complete`. Nothing else.
-- Web: one full-screen kiosk page. Five name tiles, tap a name to see that
-  person's chores for today, tap one to complete, tap back.
-- Seed: one household, five members, a few instances for today, loaded from a
-  gitignored `seed.json`.
+- Tables: adds `chore_definitions` and `chore_assignments`; adds
+  `definition_id` and `cutoff_at` to `chore_instances`. Nothing else.
+- The materializer (`app/materialize.py`): one idempotent insert-select that
+  creates a day's instances from definitions joined to assignments on that day's
+  weekday. Run nightly by two Vercel crons, plus a bounded self-heal on the board.
+- API: adds `GET /api/cron/materialize` behind its own `require_cron`. Nothing
+  else changes.
+- Seed: `chore_definitions` with embedded assignments, from the gitignored
+  `seed.json`. `chores_today` is now optional legacy.
+- Web: **unchanged this phase.**
 
-Not in this slice. Do not build, scaffold, or stub: `chore_definitions`,
-`chore_assignments`, subtasks, recurrence, the nightly materializer,
-escalation, notifications, adult login, roles, any admin UI, any other module.
+Two design facts that are settled and must not be re-litigated:
+
+- **One definition per real-world chore.** "Kitchen reset" is ONE definition with
+  assignment rows splitting it across two adults by weekday — not two
+  definitions. The all-hands 8pm reset is one definition with four members across
+  seven days and needs no special case.
+- **There is no rotation concept, anywhere.** Rotation must stay unrepresentable.
+
+`cutoff_time` and `cutoff_at` exist but are read and written by nothing — they
+are here so Phase 2 is not a third migration. Same for `sort_order` (Phase 3).
+
+Not in this slice. Do not build, scaffold, or stub: subtasks, the history
+endpoint, Today/Calendar tabs, cutoff alerts or the kiosk chime, escalation,
+notifications, adult login, roles, a parent dashboard, any admin UI, any other
+module.
+
+## The one deliberate exception to "reads don't write"
+
+`GET /api/board` materializes the day **when, and only when, that day has zero
+instances**, then returns them in the same response. It is the last line of
+defence behind two crons, because an empty wall on a school morning is the
+failure this slice exists to prevent.
+
+It is bounded: it can never add to a day that already has a row, it can only ever
+create rows a cron would have created anyway, and **every exception it raises is
+swallowed** — a broken materializer must never turn into "Can't load the board".
+Anything that loosens one of those bounds needs a new decision, not a patch.

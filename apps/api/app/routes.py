@@ -7,6 +7,7 @@ the configured HOUSEHOLD_ID — explicit, never an implicit "first row" lookup.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -18,13 +19,55 @@ from psycopg.rows import DictRow
 from . import config
 from .auth import require_kiosk
 from .db import get_db
+from .materialize import materialize
 from .schemas import Board, CompleteRequest, Household, Instance, Member
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_kiosk)])
 
+log = logging.getLogger(__name__)
+
+_INSTANCES_FOR_DAY = (
+    "select id, assignee_id, title, due_on, completed_at, completed_by "
+    "from chore_instances where household_id = %s and due_on = %s "
+    "order by title"
+)
+
 
 def _today() -> date:
     return datetime.now(ZoneInfo(config.APP_TIMEZONE)).date()
+
+
+def _self_heal(conn: psycopg.Connection[DictRow], due_on: date) -> bool:
+    """Last line of defence for an empty board. Returns True if it created rows.
+
+    Two Vercel crons already materialize each day (08:00 and 11:00 UTC). This
+    catches the case where both failed — a Neon cold start that timed out, a bad
+    deploy, a platform incident — because the cost of that is a kid walking up to
+    a blank wall on a school morning, and there is no longer a seed.py habit
+    standing behind it.
+
+    It is bounded hard, and every bound matters:
+
+    - ONLY when the day has ZERO instances. It can never add to a day that
+      already has one row, so it cannot duplicate a chore, cannot resurrect one
+      an adult cleared, and cannot appear underneath a tap in flight.
+    - It can only ever create the rows the cron would have created anyway. The
+      kiosk token gains no power to invent a chore that was not already
+      scheduled.
+    - EVERY exception is swallowed. A materializer bug must never turn into
+      "Can't load the board" on the wall: a board that renders yesterday's
+      emptiness is bad, and a board that renders an error card is worse. This is
+      a safety net, and a safety net that can take down the thing it protects is
+      not one.
+
+    Concurrency needs no lock — the unique index from 0002 plus `on conflict do
+    nothing` makes the loser of any race a no-op.
+    """
+    try:
+        return len(materialize(conn, config.HOUSEHOLD_ID, due_on)) > 0
+    except Exception:
+        log.exception("Board self-heal failed for %s; serving the board as-is", due_on)
+        return False
 
 
 @router.get("/board", response_model=Board)
@@ -43,12 +86,17 @@ def get_board(conn: psycopg.Connection[DictRow] = Depends(get_db)) -> Board:
         "where household_id = %s order by created_at",
         (config.HOUSEHOLD_ID,),
     ).fetchall()
+    today = _today()
     instances = conn.execute(
-        "select id, assignee_id, title, due_on, completed_at, completed_by "
-        "from chore_instances where household_id = %s and due_on = %s "
-        "order by title",
-        (config.HOUSEHOLD_ID, _today()),
+        _INSTANCES_FOR_DAY, (config.HOUSEHOLD_ID, today)
     ).fetchall()
+    # Re-read only when the heal actually inserted something, so the rows land in
+    # THIS response. Handing back an empty board and letting the next 60s poll
+    # pick them up would mean the kid standing there is shown "nothing today".
+    if not instances and _self_heal(conn, today):
+        instances = conn.execute(
+            _INSTANCES_FOR_DAY, (config.HOUSEHOLD_ID, today)
+        ).fetchall()
     return Board(
         household=Household(**household),
         members=[Member(**m) for m in members],
