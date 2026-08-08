@@ -767,6 +767,41 @@ never be confused with another agent's.
 
 ---
 
+## Part E — the wall checks, run
+
+Run by the owner on the mounted device, 2026-08-08. `DEPLOY.md` Part E lists
+five checks a headless browser cannot perform. **All five passed.** Recorded
+here because "we checked and it was fine" and "nobody ever checked" look
+identical in a document a year later.
+
+**Device: iPad Pro (2024, M4).** That resolves two viewport-dependent findings
+and softens a third:
+
+- **FIX NEXT SLICE 45** (below-the-fold cue) — **does not apply.** The bad case
+  is 1024×768, where the fold lands on a 23px featureless band. The M4 Pro is
+  ≈1210×834 (11") or ≈1376×1032 (13"); the 11" leaves a ~64px sliver with a
+  visible check circle, and the 13" fits six rows outright. The finding stays on
+  the list because it returns on any smaller iPad, but it is not live here.
+- **FIX NEXT SLICE 56** (only 3 rows fit) — **does not apply.** That is the
+  iPad mini 6 at 1133×744. Four rows fit at both Pro sizes.
+- **FIX NEXT SLICE 54** (double-counted safe-area inset) — no symptom observed.
+  It stays UNVERIFIED rather than moving to resolved: `env()` was 0 in every
+  automated run, so this is the absence of a visible problem on one device in
+  one orientation, not a measurement.
+
+**The glare and off-axis models were conservative for this hardware.** Both
+simulations assumed a generic IPS panel. The M4 Pro is tandem OLED, which holds
+contrast substantially better off-axis and has far lower black levels — so the
+gold arc at a simulated 2.60:1 under glare, and 2.37:1 off-axis, are worse than
+what this panel actually does. That is luck, not design: those numbers were
+measured against the CSS, and they would still bite on an IPS iPad. The arc and
+the empty tick circle remain the first two elements to give out, and stay on the
+FIX NEXT SLICE list on that basis.
+
+One limit worth stating plainly: this was an owner's eye at the wall, not an
+instrument. It is strong evidence that nothing is obviously broken in the real
+conditions, and it is not a measurement of the ratios above.
+
 ## The one sentence
 
 **What is most likely to make the kids stop using this:** tapping a chore and

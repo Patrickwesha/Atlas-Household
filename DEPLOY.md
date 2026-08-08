@@ -115,6 +115,12 @@ Findings from these go into the same three buckets as the rest of the gauntlet �
 a reason recorded for anything accepted. Same bar: a defect in what exists, not
 a feature request.
 
+> **Run once already:** 2026-08-08, on the mounted iPad Pro (2024, M4). All five
+> passed. See "Part E — the wall checks, run" in `docs/GAUNTLET-01.md` for what
+> that did and did not establish, and for the two findings the device resolves.
+> Re-run this list if the kiosk ever moves to a different iPad — two findings are
+> viewport-dependent and come back on a smaller screen.
+
 1. **Glare.** Look at the board at the times of day the kitchen is brightest,
    and with the ceiling lights on at night. Glare was modelled as a uniform
    white veil at 15% and 30%; a real specular highlight off a window is not
