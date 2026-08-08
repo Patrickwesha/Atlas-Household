@@ -6,48 +6,89 @@ Two Vercel projects from this one repo, different root directories:
 |---|---|---|
 | Root directory | `apps/api` | `apps/web` |
 | Runtime | Python (serverless) | Vite static |
-| Stable URL | `https://<api-name>.vercel.app` | `https://<web-name>.vercel.app` |
+| Stable URL | `https://atlas-api-sigma.vercel.app` | *(fill in from Part B)* |
 
 The API and the web each need the other's URL, so deploy in this order:
 **API → set the web's `VITE_API_BASE_URL` → web → set the API's `ALLOWED_ORIGINS` → redeploy the API.**
 
-> **Always use the STABLE production URL** (`atlas-api.vercel.app`), never the
-> per-deployment URL (`atlas-api-9f3k2x.vercel.app`). The per-deploy URL belongs
-> to one build: it works today and breaks on your next push. The two sit right
-> next to each other in the dashboard — this is the easiest mistake to make.
+## The real URLs
+
+> **Vercel appended `-sigma` to the API project.** The plain name was taken, so
+> the stable URL is `atlas-api-sigma.vercel.app`, **not** `atlas-api.vercel.app`.
+> Copying the pretty name out of a runbook is how you spend an hour on a CORS
+> error that is really a typo. Expect the same for the web project — check the
+> name Vercel actually assigns.
+
+Three URLs point at the API project. Only the first is safe to configure against:
+
+| URL | Use it? |
+|---|---|
+| `https://atlas-api-sigma.vercel.app` | ✅ **stable production** — this is the one |
+| `https://atlas-api-git-main-patrick-kweshas-projects.vercel.app` | branch alias; follows `main`, fine to poke at, don't configure against it |
+| `https://atlas-ygkszztx0-patrick-kweshas-projects.vercel.app` | ❌ per-deployment — belongs to one build, dies on your next push |
+
+> The per-deploy URL sits directly beneath the stable one in the dashboard. It
+> works today and breaks on your next push, which makes it the easiest mistake
+> to make and the most confusing one to debug.
 
 ## Part A — API project (deploy first)
 
 1. Vercel → **Add New → Project** → import `Patrickwesha/Atlas-Household`.
 2. **Root Directory:** `apps/api`. Framework preset: **Other** (Vercel detects
    Python from `requirements.txt` + the `api/` folder).
-3. Name it e.g. `atlas-api` → stable URL `https://atlas-api.vercel.app`.
+3. Name it `atlas-api` → Vercel assigned `https://atlas-api-sigma.vercel.app`.
 4. Add the **API environment variables** (table at the bottom). You may leave
    `ALLOWED_ORIGINS` empty for now and set it in Part C.
-5. **Deploy.** Copy the **stable** URL: `https://atlas-api.vercel.app`.
-6. Smoke test: open `https://atlas-api.vercel.app/api/board`. You should get a
-   **401 JSON** (`{"detail":"Invalid or missing device token"}`) — that means
-   it's up. An HTML login page instead → see Troubleshooting.
+5. **Deploy.** Copy the **stable** URL: `https://atlas-api-sigma.vercel.app`.
+6. Smoke test: open `https://atlas-api-sigma.vercel.app/api/board`. You should
+   get a **401 JSON** (`{"detail":"Invalid or missing device token"}`) — that
+   means it's up. An HTML login page instead → see Troubleshooting.
+
+   Two things that response tells you, beyond "it's alive":
+   - **JSON rather than an HTML login page** means Deployment Protection is not
+     intercepting.
+   - **401 rather than 500** means `config.py` imported cleanly, so
+     `DATABASE_URL`, `DEVICE_TOKEN` and `HOUSEHOLD_ID` are all set — they are
+     `_require`d at import, and a missing one crashes the function instead. It
+     proves they are *present*, not that `DATABASE_URL` is *correct*; the first
+     authenticated board load tells you that.
+
+   The root `/` returning `{"detail":"Not Found"}` is **normal** — FastAPI has no
+   `/` route. Ignore the `/`, `/favicon.ico` and `/favicon.png` 404s in the logs;
+   that is just a browser visiting the root.
 
 ## Part B — Web project
 
 1. **Add New → Project** → import the same repo again.
 2. **Root Directory:** `apps/web`. Framework preset: **Vite** (auto-detected).
-3. Name it e.g. `atlas-web` → `https://atlas-web.vercel.app`.
-4. Add `VITE_API_BASE_URL` = the **stable API URL** from Part A
-   (`https://atlas-api.vercel.app`, not a per-deploy URL).
-5. **Deploy.** Copy the stable URL: `https://atlas-web.vercel.app`.
+3. Name it e.g. `atlas-web`. **Write down the URL Vercel actually assigns** — it
+   may carry a suffix like the API's `-sigma`.
+4. Add `VITE_API_BASE_URL` = `https://atlas-api-sigma.vercel.app`
+   — the stable API URL from Part A, **no trailing slash** (the client builds
+   `${BASE}/api/board`, so a slash yields `//api/board`).
+5. **Deploy.** Copy the stable URL and fill it in at the top of this file.
+
+> **`VITE_API_BASE_URL` is baked in at BUILD time, not read at runtime.** Vite
+> inlines it into the bundle. Vercel usually starts building the moment you
+> import the repo — often before you have added the variable — and that first
+> build hard-codes `undefined`. The kiosk then shows "Can't reach the server"
+> no matter what you set afterwards, and nothing in the API logs will explain
+> it, because no request is ever made.
+>
+> Fix: set the variable, then **Deployments → ⋯ → Redeploy**. Changing an env
+> var alone does nothing to an already-built bundle.
 
 ## Part C — Wire CORS back to the API
 
 1. API project → **Settings → Environment Variables** → set `ALLOWED_ORIGINS`
-   = the **stable web URL** (`https://atlas-web.vercel.app`).
+   = the **stable web URL** from Part B (no trailing slash — it is matched as
+   an exact origin, and a slash will not match).
 2. **Redeploy the API** (Deployments → ⋯ → Redeploy). Env changes only take
    effect on a new deploy.
 
 ## Part D — First real use on the iPad
 
-1. On the iPad, open `https://atlas-web.vercel.app` in **Safari**.
+1. On the iPad, open the **stable web URL** from Part B in **Safari**.
 2. On the setup screen, paste the **device token** (same value as the API's
    `DEVICE_TOKEN`). The board should load.
 3. **Share → Add to Home Screen** — installs the standalone PWA.
@@ -140,10 +181,10 @@ never be committed; copy their values from your local `.env`.
 | `DEVICE_TOKEN` | *(secret)* your device token (the same one the iPad uses) | Part A |
 | `HOUSEHOLD_ID` | the UUID in your `.env` (must match `seed.json`) | Part A |
 | `APP_TIMEZONE` | `America/Chicago` | Part A |
-| `ALLOWED_ORIGINS` | your stable web URL (e.g. `https://atlas-web.vercel.app`) | **Part C**, after the web deploys |
+| `ALLOWED_ORIGINS` | your stable web URL from Part B, exact origin, no trailing slash | **Part C**, after the web deploys |
 
 **Web project** (`apps/web`):
 
 | Name | Value | Set when |
 |---|---|---|
-| `VITE_API_BASE_URL` | your stable API URL (e.g. `https://atlas-api.vercel.app`) | **Part B**, after the API deploys |
+| `VITE_API_BASE_URL` | `https://atlas-api-sigma.vercel.app` (no trailing slash) | **Part B**, before the first build — see the build-time note in Part B |
