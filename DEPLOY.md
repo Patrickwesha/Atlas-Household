@@ -6,26 +6,29 @@ Two Vercel projects from this one repo, different root directories:
 |---|---|---|
 | Root directory | `apps/api` | `apps/web` |
 | Runtime | Python (serverless) | Vite static |
-| Stable URL | `https://atlas-api-sigma.vercel.app` | *(fill in from Part B)* |
+| Stable URL | `https://atlas-api-sigma.vercel.app` | `https://atlas-web-henna.vercel.app` |
 
 The API and the web each need the other's URL, so deploy in this order:
 **API → set the web's `VITE_API_BASE_URL` → web → set the API's `ALLOWED_ORIGINS` → redeploy the API.**
 
 ## The real URLs
 
-> **Vercel appended `-sigma` to the API project.** The plain name was taken, so
-> the stable URL is `atlas-api-sigma.vercel.app`, **not** `atlas-api.vercel.app`.
-> Copying the pretty name out of a runbook is how you spend an hour on a CORS
-> error that is really a typo. Expect the same for the web project — check the
-> name Vercel actually assigns.
+> **Vercel suffixed BOTH project names.** The plain names were taken, so the
+> real URLs are `atlas-api-sigma.vercel.app` and `atlas-web-henna.vercel.app` —
+> not `atlas-api.vercel.app` / `atlas-web.vercel.app`. Copying the pretty name
+> out of a runbook is how you spend an hour on a CORS error that is really a
+> typo. The suffix is random per project; assume any new project gets one.
 
-Three URLs point at the API project. Only the first is safe to configure against:
+Each project exposes three URLs. Only the stable one is safe to configure against:
 
-| URL | Use it? |
-|---|---|
-| `https://atlas-api-sigma.vercel.app` | ✅ **stable production** — this is the one |
-| `https://atlas-api-git-main-patrick-kweshas-projects.vercel.app` | branch alias; follows `main`, fine to poke at, don't configure against it |
-| `https://atlas-ygkszztx0-patrick-kweshas-projects.vercel.app` | ❌ per-deployment — belongs to one build, dies on your next push |
+| Project | URL | Use it? |
+|---|---|---|
+| API | `https://atlas-api-sigma.vercel.app` | ✅ **stable production** |
+| API | `https://atlas-api-git-main-patrick-kweshas-projects.vercel.app` | branch alias; follows `main`, fine to poke at, don't configure against it |
+| API | `https://atlas-ygkszztx0-patrick-kweshas-projects.vercel.app` | ❌ per-deployment — dies on your next push |
+| Web | `https://atlas-web-henna.vercel.app` | ✅ **stable production** |
+| Web | `https://atlas-web-git-main-patrick-kweshas-projects.vercel.app` | branch alias |
+| Web | `https://atlas-qya0tdd6g-patrick-kweshas-projects.vercel.app` | ❌ per-deployment |
 
 > The per-deploy URL sits directly beneath the stable one in the dashboard. It
 > works today and breaks on your next push, which makes it the easiest mistake
@@ -61,12 +64,11 @@ Three URLs point at the API project. Only the first is safe to configure against
 
 1. **Add New → Project** → import the same repo again.
 2. **Root Directory:** `apps/web`. Framework preset: **Vite** (auto-detected).
-3. Name it e.g. `atlas-web`. **Write down the URL Vercel actually assigns** — it
-   may carry a suffix like the API's `-sigma`.
+3. Name it `atlas-web` → Vercel assigned `https://atlas-web-henna.vercel.app`.
 4. Add `VITE_API_BASE_URL` = `https://atlas-api-sigma.vercel.app`
    — the stable API URL from Part A, **no trailing slash** (the client builds
    `${BASE}/api/board`, so a slash yields `//api/board`).
-5. **Deploy.** Copy the stable URL and fill it in at the top of this file.
+5. **Deploy.** Stable URL: `https://atlas-web-henna.vercel.app`.
 
 > **`VITE_API_BASE_URL` is baked in at BUILD time, not read at runtime.** Vite
 > inlines it into the bundle. Vercel usually starts building the moment you
@@ -80,15 +82,16 @@ Three URLs point at the API project. Only the first is safe to configure against
 
 ## Part C — Wire CORS back to the API
 
-1. API project → **Settings → Environment Variables** → set `ALLOWED_ORIGINS`
-   = the **stable web URL** from Part B (no trailing slash — it is matched as
-   an exact origin, and a slash will not match).
+1. API project → **Settings → Environment Variables** → set
+   `ALLOWED_ORIGINS` = `https://atlas-web-henna.vercel.app`
+   (no trailing slash — it is matched as an exact origin, and a slash will not
+   match).
 2. **Redeploy the API** (Deployments → ⋯ → Redeploy). Env changes only take
    effect on a new deploy.
 
 ## Part D — First real use on the iPad
 
-1. On the iPad, open the **stable web URL** from Part B in **Safari**.
+1. On the iPad, open `https://atlas-web-henna.vercel.app` in **Safari**.
 2. On the setup screen, paste the **device token** (same value as the API's
    `DEVICE_TOKEN`). The board should load.
 3. **Share → Add to Home Screen** — installs the standalone PWA.
@@ -181,7 +184,7 @@ never be committed; copy their values from your local `.env`.
 | `DEVICE_TOKEN` | *(secret)* your device token (the same one the iPad uses) | Part A |
 | `HOUSEHOLD_ID` | the UUID in your `.env` (must match `seed.json`) | Part A |
 | `APP_TIMEZONE` | `America/Chicago` | Part A |
-| `ALLOWED_ORIGINS` | your stable web URL from Part B, exact origin, no trailing slash | **Part C**, after the web deploys |
+| `ALLOWED_ORIGINS` | `https://atlas-web-henna.vercel.app` (exact origin, no trailing slash) | **Part C**, after the web deploys |
 
 **Web project** (`apps/web`):
 
