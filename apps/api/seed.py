@@ -47,6 +47,14 @@ TZ = ZoneInfo("America/Chicago")
 DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 DAY_TO_INT = {name: i for i, name in enumerate(DAY_KEYS)}
 
+# Alternating weeks, in words for the same reason days are: 0 and 1 are
+# meaningless to read and easy to transpose. Absent means every week.
+#
+# Which real-world week is "even" is an accident of the calendar — see
+# app/materialize.week_parity_of. Pin it by dry-running a Saturday after seeding;
+# if the zones come back swapped from reality, swap these values in seed.json.
+WEEK_KEYS = {"every": None, "even": 0, "odd": 1}
+
 CADENCES = {"daily", "weekly"}
 
 
@@ -68,6 +76,47 @@ def _parse_days(raw: Any, where: str) -> list[int]:
             raise SeedError(f"{where}: unknown day {entry!r}. Use one of {DAY_KEYS}, or 'all'.")
         days.add(DAY_TO_INT[entry.lower()])
     return sorted(days)
+
+
+def _parse_week(raw: Any, where: str) -> int | None:
+    """'every' (or absent) -> None; 'even' -> 0; 'odd' -> 1."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or raw.lower() not in WEEK_KEYS:
+        raise SeedError(
+            f"{where}: unknown week {raw!r}. Use one of {sorted(WEEK_KEYS)}, or omit it."
+        )
+    return WEEK_KEYS[raw.lower()]
+
+
+def _warn_parity_gaps(definition: dict[str, Any]) -> None:
+    """Warn when a weekday is covered on only one of the two alternating weeks.
+
+    A definition that says "Panashe, Saturday, even" and nothing else leaves every
+    ODD Saturday with nobody assigned. Nothing errors — the board is simply empty
+    that week, which is the exact failure this whole slice exists to prevent, and
+    it would first show up a fortnight after seeding when nobody is looking for it.
+
+    A warning rather than a refusal: a genuinely fortnightly chore is a legitimate
+    thing to want.
+    """
+    parities_by_day: dict[int, set[int | None]] = {}
+    for assignment in definition["assignments"]:
+        week = _parse_week(assignment.get("week"), "")
+        for day in _parse_days(assignment["days"], ""):
+            parities_by_day.setdefault(day, set()).add(week)
+
+    for day, parities in sorted(parities_by_day.items()):
+        if None in parities:
+            continue  # somebody is on it every week
+        missing = {0, 1} - parities
+        if missing:
+            absent = "odd" if 0 in parities else "even"
+            print(
+                f"  NOTE: '{definition['name']}' is assigned on "
+                f"{DAY_KEYS[day]} only in {'even' if 0 in parities else 'odd'} weeks. "
+                f"Nobody has it on an {absent} {DAY_KEYS[day]}."
+            )
 
 
 def _validate(data: dict[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
@@ -112,6 +161,8 @@ def _validate(data: dict[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
                     "nobody can clear."
                 )
             _parse_days(assignment.get("days"), f"{where}, member '{key}'")
+            _parse_week(assignment.get("week"), f"{where}, member '{key}'")
+        _warn_parity_gaps(definition)
 
     for chore in data.get("chores_today", []):
         if chore["assignee"] not in id_by_key:
@@ -279,15 +330,18 @@ def main() -> int:
                 )
                 for assignment in definition["assignments"]:
                     member_id = member_id_by_key[assignment["member"]]
+                    week = _parse_week(assignment.get("week"), definition["name"])
                     for day in _parse_days(assignment["days"], definition["name"]):
                         # No fixed UUID needed: (definition_id, member_id,
                         # day_of_week) is the natural key, unique-constrained in
-                        # migration 0002.
+                        # migration 0002. week_parity is deliberately NOT part of
+                        # that key — see 0003 for why.
                         cur.execute(
-                            "insert into chore_assignments (definition_id, member_id, day_of_week) "
-                            "values (%s, %s, %s) "
+                            "insert into chore_assignments "
+                            "(definition_id, member_id, day_of_week, week_parity) "
+                            "values (%s, %s, %s, %s) "
                             "on conflict (definition_id, member_id, day_of_week) do nothing",
-                            (definition["id"], member_id, day),
+                            (definition["id"], member_id, day, week),
                         )
                         assignment_rows += 1
 

@@ -176,8 +176,8 @@ so its version table has to be started in sync — **stamp first, then upgrade**
 cd apps/api
 uv run alembic current                # expect: empty, the first time
 uv run alembic stamp 0001             # says "0001 already happened". Applies no DDL.
-uv run alembic upgrade head           # applies 0002
-uv run alembic current                # expect: 0002 (head)
+uv run alembic upgrade head           # applies 0002 and 0003
+uv run alembic current                # expect: 0003 (head)
 ```
 
 Runs against `DIRECT_URL` and **refuses a `-pooler` host**. If you want to read
@@ -222,6 +222,35 @@ so a new chore can slot between two without renumbering, and put end-of-day
 chores last — alphabetically the 8pm family reset sorts to the *top* of the list,
 above chores due at breakfast. It is read live, so re-ordering takes effect on
 every day at once, past and future; you do not need to re-materialize anything.
+
+### F.2a — PIN THE WEEK PARITY BEFORE THE FIRST REAL SATURDAY
+
+Assignments can carry `"week": "even"` or `"week": "odd"` for chores that
+alternate — the Saturday deep-clean zones. Parity is computed from the date
+(`(ordinal // 7) % 2`, *not* the ISO week number, which repeats parity at the year
+boundary and would silently stop swapping zones for one week every January).
+
+**Which real-world week is "even" is an accident of the calendar.** So this is a
+required step, not an optional check:
+
+```
+uv run python materialize.py --date <the next Saturday> --dry-run
+```
+
+Read the zones. If they are swapped from what the household actually expects that
+week, swap `even`↔`odd` in `seed.json` and re-run `seed.py`. **Do this before the
+first real Saturday**, because afterwards you are correcting the wall in front of
+people rather than a file.
+
+Two things about parity worth knowing:
+
+- The parity block runs **Sunday→Saturday**, so a Saturday and the Sunday after it
+  are in *different* blocks. That is only visible in chores assigned to Sunday by
+  parity; both people still get an equal share.
+- If a definition covers a weekday in only one parity, nobody has it on the other
+  week — the board is quietly empty every other Saturday. `seed.py` prints a NOTE
+  when it sees that. It is a warning, not an error: a genuinely fortnightly chore
+  is a legitimate thing to want.
 
 ### F.3 — Set `CRON_SECRET` and deploy
 

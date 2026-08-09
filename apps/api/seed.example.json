@@ -12,6 +12,12 @@
     "the database stores — a hand-edited file should not be the place where someone",
     "has to remember whether 0 means Monday or Sunday.",
     "",
+    "week: 'every' (or omit it), 'even', or 'odd' — alternating weeks. Which real",
+    "week is 'even' is an accident of the calendar, so after seeding run",
+    "materialize.py --date <next Saturday> --dry-run; if the zones come back",
+    "swapped from reality, swap even/odd here and re-seed. Do that BEFORE the",
+    "first real Saturday, not after.",
+    "",
     "cadence is descriptive only ('daily' | 'weekly'). The schedule is the days.",
     "cutoff_time is Phase 2 and is read by nothing yet; null is correct for now.",
     "",
@@ -88,7 +94,8 @@
       "sort_order": 30,
       "is_active": true,
       "assignments": [
-        { "member": "kid_two", "days": ["sat"] }
+        { "member": "kid_two", "days": ["sat"], "week": "even" },
+        { "member": "kid_one", "days": ["sat"], "week": "odd" }
       ]
     },
     {
@@ -100,7 +107,8 @@
       "sort_order": 40,
       "is_active": true,
       "assignments": [
-        { "member": "kid_one", "days": ["sat"] }
+        { "member": "kid_one", "days": ["sat"], "week": "even" },
+        { "member": "kid_two", "days": ["sat"], "week": "odd" }
       ]
     }
   ]

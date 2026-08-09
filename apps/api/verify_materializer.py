@@ -28,7 +28,11 @@ from uuid import UUID, uuid4
 import psycopg
 from psycopg.rows import DictRow, dict_row
 
-from app.materialize import materialize, weekday_of
+from app.materialize import materialize, schedule_params, week_parity_of, weekday_of
+
+# The CLI's preview query, imported from the script rather than copied, so this
+# file cannot accidentally verify a stale copy of the thing under test.
+from materialize import _PREVIEW as CLI_PREVIEW
 
 HOUSEHOLD = UUID("00000000-0000-0000-0000-0000000000f1")
 
@@ -249,7 +253,113 @@ def main() -> int:
                   "select count(*) as n from chore_instances where cutoff_at is not null"
               )["n"] == 0)
 
-        # ---- 8. Household scoping ----
+        # ---- 8. Week parity ----
+        #
+        # Alternating weeks are a SCHEDULE, not a rotation: parity is computed
+        # from the date, so nothing advances and nothing is remembered. These
+        # checks are what keep that true in practice.
+        print("\nWeek parity")
+        reset(conn)
+        pids: dict[str, UUID] = {}
+        for name in ("Ada", "Ben"):
+            pids[name] = q(conn, "select id from members where name = %s", (name,))["id"]
+        zone_a = q(conn,
+            "insert into chore_definitions (household_id, name, cadence) "
+            "values (%s,'Zone A','weekly') returning id", (HOUSEHOLD,))["id"]
+        zone_b = q(conn,
+            "insert into chore_definitions (household_id, name, cadence) "
+            "values (%s,'Zone B','weekly') returning id", (HOUSEHOLD,))["id"]
+        # The pairing under test: two people swapping two zones every Saturday.
+        for did, even, odd in [(zone_a, "Ada", "Ben"), (zone_b, "Ben", "Ada")]:
+            for member, parity in [(even, 0), (odd, 1)]:
+                conn.execute(
+                    "insert into chore_assignments (definition_id, member_id, day_of_week, week_parity) "
+                    "values (%s,%s,5,%s)", (did, pids[member], parity))
+
+        sats = [date(2026, 8, 15) + timedelta(days=7 * i) for i in range(4)]
+        for s in sats:
+            materialize(conn, HOUSEHOLD, s)
+        # Narrowed to the zone titles: these people also carry the fixture's daily
+        # chores, and asserting over their whole list would be testing the
+        # fixture rather than the parity.
+        ZONES = {"Zone A", "Zone B"}
+        zones = {s: {m: titles_for(conn, m, s) & ZONES for m in ("Ada", "Ben")} for s in sats}
+
+        check("each Saturday assigns exactly one zone per person",
+              all(len(zones[s][m]) == 1 for s in sats for m in ("Ada", "Ben")),
+              f"{zones}")
+        check("the two people never hold the same zone on the same Saturday",
+              all(zones[s]["Ada"] != zones[s]["Ben"] for s in sats))
+        check("zones swap on consecutive Saturdays",
+              all(zones[sats[i]]["Ada"] != zones[sats[i + 1]]["Ada"] for i in range(3)))
+        check("and swap back — a 2-week cycle, not a drift",
+              zones[sats[0]]["Ada"] == zones[sats[2]]["Ada"]
+              and zones[sats[1]]["Ada"] == zones[sats[3]]["Ada"])
+        check("over two weeks each person does both zones exactly once",
+              zones[sats[0]]["Ada"] | zones[sats[1]]["Ada"] == {"Zone A", "Zone B"})
+
+        # THE YEAR-BOUNDARY CHECK. ISO week numbers are discontinuous across New
+        # Year — 2026-12-26 / 2027-01-02 / 2027-01-09 have ISO parities 0, 1, 1 —
+        # so an implementation using isocalendar() would silently stop swapping
+        # zones for one week every January. This is the check that catches it.
+        print("\nThe year boundary (where ISO week numbering would break)")
+        ny = [date(2026, 12, 26), date(2027, 1, 2), date(2027, 1, 9), date(2027, 1, 16)]
+        check("ordinal parity alternates on every Saturday across New Year",
+              [week_parity_of(d) for d in ny] in ([0, 1, 0, 1], [1, 0, 1, 0]),
+              f"got {[week_parity_of(d) for d in ny]}")
+        check("ISO week numbering would NOT — the bug this avoids is real",
+              [d.isocalendar()[1] % 2 for d in ny] not in ([0, 1, 0, 1], [1, 0, 1, 0]),
+              "isocalendar() alternated here; re-check the assumption")
+        for d in ny:
+            materialize(conn, HOUSEHOLD, d)
+        ny_zones = [titles_for(conn, "Ada", d) for d in ny]
+        check("and the zones themselves keep swapping through New Year",
+              all(ny_zones[i] != ny_zones[i + 1] for i in range(3)), f"{ny_zones}")
+
+        # A null parity must mean EVERY week, not "parity 0".
+        print("\nNull parity means every week")
+        every = q(conn,
+            "insert into chore_definitions (household_id, name, cadence) "
+            "values (%s,'Every Saturday','weekly') returning id", (HOUSEHOLD,))["id"]
+        conn.execute(
+            "insert into chore_assignments (definition_id, member_id, day_of_week, week_parity) "
+            "values (%s,%s,5,null)", (every, pids["Ada"]))
+        for s in sats:
+            materialize(conn, HOUSEHOLD, s)
+        check("a null-parity assignment materializes on BOTH parities",
+              all("Every Saturday" in titles_for(conn, "Ada", s) for s in sats))
+        check("a parity-specific one still does not",
+              sum("Zone A" in titles_for(conn, "Ada", s) for s in sats) == 2)
+
+        # ---- 9. The dry-run must not lie ----
+        #
+        # The CLI preview and the real insert are two queries over the same
+        # schedule. If they drift, `--dry-run` reports a schedule the nightly run
+        # does not produce — while being the tool used to confirm the parity
+        # anchor before trusting a Saturday. They share SCHEDULE_WHERE; this
+        # proves the sharing actually holds end to end.
+        print("\nThe --dry-run preview agrees with the real insert")
+        for label, day in [("parity 0", sats[1]), ("parity 1", sats[0])]:
+            conn.execute("delete from chore_instances where due_on = %s", (day,))
+            previewed = {
+                (r["member_name"], r["title"])
+                for r in conn.execute(
+                    CLI_PREVIEW, {**schedule_params(HOUSEHOLD, day), "due_on": day}
+                ).fetchall()
+            }
+            materialize(conn, HOUSEHOLD, day)
+            actual = {
+                (r["name"], r["title"])
+                for r in conn.execute(
+                    "select m.name, ci.title from chore_instances ci "
+                    "join members m on m.id = ci.assignee_id where ci.due_on = %s", (day,)
+                ).fetchall()
+            }
+            check(f"preview == reality on a {label} day ({day})", previewed == actual,
+                  f"preview-only {previewed - actual}, created-only {actual - previewed}")
+
+        # ---- 10. Household scoping ----
+        reset(conn)
         print("\nHousehold scoping")
         other = uuid4()
         conn.execute("insert into households (id, name) values (%s, 'Someone Else')", (other,))

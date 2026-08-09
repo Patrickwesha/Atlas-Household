@@ -32,14 +32,25 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.envfile import REPO_ROOT, DirectUrlError, load_env_file, resolve_direct_url
-from app.materialize import materialize, weekday_of
+from app.materialize import (
+    SCHEDULE_WHERE,
+    materialize,
+    schedule_params,
+    week_parity_of,
+    weekday_of,
+)
 
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-# What the run WOULD create, and what is already there. Mirrors _INSERT_DAY's
-# join so a dry run cannot drift from the real thing in the ways that matter
-# (is_active, day_of_week, household scoping).
-_PREVIEW = """
+# What the run WOULD create, and what is already there.
+#
+# The WHERE clause is IMPORTED, not retyped. This query and the real insert used
+# to carry two copies of the same predicate, and week parity is exactly the kind
+# of change that gets added to one and forgotten in the other — at which point
+# --dry-run reports a schedule the nightly run does not produce, while being the
+# tool you use to confirm the parity anchor. The FROM differs (this one joins
+# members, to print names); the definition of "who is scheduled" cannot.
+_PREVIEW = f"""
     select m.name as member_name,
            m.role as member_role,
            d.name as title,
@@ -53,9 +64,7 @@ _PREVIEW = """
       from chore_definitions d
       join chore_assignments a on a.definition_id = d.id
       join members m           on m.id = a.member_id
-     where d.household_id = %(household_id)s
-       and d.is_active
-       and a.day_of_week = %(dow)s
+    {SCHEDULE_WHERE}
      order by m.name, d.sort_order, d.name
 """
 
@@ -105,17 +114,21 @@ def main() -> int:
         return 1
 
     dow = weekday_of(due_on)
+    parity = week_parity_of(due_on)
     verb = "Would materialize" if args.dry_run else "Materializing"
-    print(f"{verb} {due_on.isoformat()} ({DAY_NAMES[dow]}, day_of_week={dow}) ...")
+    print(
+        f"{verb} {due_on.isoformat()} ({DAY_NAMES[dow]}, day_of_week={dow}, "
+        f"week_parity={parity}) ..."
+    )
 
     with psycopg.connect(direct_url, autocommit=True, row_factory=dict_row) as conn:
         preview = conn.execute(
-            _PREVIEW, {"household_id": household_id, "due_on": due_on, "dow": dow}
+            _PREVIEW, {**schedule_params(household_id, due_on), "due_on": due_on}
         ).fetchall()
 
         if not preview:
-            print("  Nothing scheduled for this weekday. No active definition is")
-            print("  assigned to anyone on a " + DAY_NAMES[dow] + ".")
+            print(f"  Nothing scheduled for this weekday. No active definition is")
+            print(f"  assigned to anyone on a {DAY_NAMES[dow]} in a parity-{parity} week.")
             return 0
 
         created: list[UUID] = []

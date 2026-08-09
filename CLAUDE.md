@@ -50,7 +50,8 @@ itself so nobody runs `seed.py --refresh` every morning.
 In scope:
 
 - Tables: adds `chore_definitions` and `chore_assignments`; adds
-  `definition_id` and `cutoff_at` to `chore_instances`. Nothing else.
+  `definition_id` and `cutoff_at` to `chore_instances`; adds
+  `chore_assignments.week_parity` (0003) for alternating weeks. Nothing else.
 - The materializer (`app/materialize.py`): one idempotent insert-select that
   creates a day's instances from definitions joined to assignments on that day's
   weekday. Run nightly by two Vercel crons, plus a bounded self-heal on the board.
@@ -66,7 +67,18 @@ Two design facts that are settled and must not be re-litigated:
   assignment rows splitting it across two adults by weekday — not two
   definitions. The all-hands 8pm reset is one definition with four members across
   seven days and needs no special case.
-- **There is no rotation concept, anywhere.** Rotation must stay unrepresentable.
+- **Assignment is a pure function of the date.** `day_of_week` and `week_parity`
+  are both derived from the due date — nothing is remembered and nothing advances.
+  What stays unrepresentable is **state**: no `rotation_index`, no
+  `last_assigned_to`, no `next_up`, no counter that materialization increments.
+
+  *(This replaces "there is no rotation concept, anywhere". Alternating weeks were
+  added in migration 0003 for the Saturday deep clean. The rule was always
+  protecting against a value someone has to look up, that changes, and that can
+  therefore be disputed — "whose turn was it?" is the argument this system exists
+  to end. A parity computed from the calendar is not that question, and the board
+  answers it without anyone remembering anything. The moment whose-turn-it-is
+  lives in a row that changes, the old rule is back in force.)*
 
 `cutoff_time` and `cutoff_at` exist but are read and written by nothing — they
 are here so Phase 2 is not a third migration.
