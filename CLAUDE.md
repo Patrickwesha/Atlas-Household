@@ -69,7 +69,13 @@ Two design facts that are settled and must not be re-litigated:
 - **There is no rotation concept, anywhere.** Rotation must stay unrepresentable.
 
 `cutoff_time` and `cutoff_at` exist but are read and written by nothing — they
-are here so Phase 2 is not a third migration. Same for `sort_order` (Phase 3).
+are here so Phase 2 is not a third migration.
+
+`sort_order` **is** live: `GET /api/board` joins `chore_definitions` and orders
+by it, `nulls last` so slice-1 rows sink to the bottom. It is joined, never
+snapshotted onto the instance — unlike `title`, re-ordering old rows rewrites
+nothing that was ever true about them, so a change takes effect everywhere at
+once. Alphabetical order put the 8pm family reset at the top of the list.
 
 Not in this slice. Do not build, scaffold, or stub: subtasks, the history
 endpoint, Today/Calendar tabs, cutoff alerts or the kiosk chime, escalation,

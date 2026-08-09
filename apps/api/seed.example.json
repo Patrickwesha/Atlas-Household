@@ -15,6 +15,11 @@
     "cadence is descriptive only ('daily' | 'weekly'). The schedule is the days.",
     "cutoff_time is Phase 2 and is read by nothing yet; null is correct for now.",
     "",
+    "sort_order IS live — it is the order chores appear in on the kiosk. Leave",
+    "gaps (10, 20, 30) so a new chore can slot between two without renumbering.",
+    "Put end-of-day chores last: alphabetically the 8pm family reset lands in the",
+    "middle of the afternoon, which is not when it happens.",
+    "",
     "A dependent must never appear in assignments: the API refuses a dependent",
     "completion and the kiosk gives them nothing to press, so the chore would",
     "materialize into a row nobody can ever clear. seed.py refuses it."
@@ -65,7 +70,7 @@
       "area": null,
       "cadence": "daily",
       "cutoff_time": null,
-      "sort_order": 30,
+      "sort_order": 90,
       "is_active": true,
       "assignments": [
         { "member": "adult_one", "days": "all" },
@@ -80,7 +85,7 @@
       "area": "Bathrooms",
       "cadence": "weekly",
       "cutoff_time": null,
-      "sort_order": 40,
+      "sort_order": 30,
       "is_active": true,
       "assignments": [
         { "member": "kid_two", "days": ["sat"] }
@@ -92,7 +97,7 @@
       "area": "Bedrooms",
       "cadence": "weekly",
       "cutoff_time": null,
-      "sort_order": 50,
+      "sort_order": 40,
       "is_active": true,
       "assignments": [
         { "member": "kid_one", "days": ["sat"] }

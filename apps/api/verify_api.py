@@ -197,6 +197,67 @@ def main() -> int:
         check("a fully completed day is not re-materialized and completions are intact",
               [(r["id"], r["completed_at"]) for r in done_before]
               == [(r["id"], r["completed_at"]) for r in done_after])
+
+        # ---- Board ordering: sort_order, not the alphabet ----
+        #
+        # This is the reason the change exists: the 8pm family reset is a real
+        # chore now, and alphabetically "15-minute family reset" sorts to the TOP
+        # of the list — above chores due at breakfast. Ordering by the
+        # definition's sort_order puts the end of the day at the end of the list.
+        print("\nBoard ordering (sort_order, joined live — not the alphabet)")
+        conn.execute("delete from chore_instances")
+        ada = q(conn, "select id from members where name = 'Ada'")["id"]
+        # Deliberately adversarial: sort_order ascending is the exact REVERSE of
+        # alphabetical, so a board that fell back to `order by title` cannot
+        # accidentally pass this.
+        for name, order in [("Zebra chore", 10), ("Middle chore", 20), ("Apple chore", 30)]:
+            did = q(conn,
+                "insert into chore_definitions (household_id, name, cadence, sort_order) "
+                "values (%s,%s,'daily',%s) returning id", (HOUSEHOLD, name, order))["id"]
+            conn.execute(
+                "insert into chore_instances (household_id, assignee_id, definition_id, title, due_on) "
+                "values (%s,%s,%s,%s,%s)", (HOUSEHOLD, ada, did, name, today))
+        # A slice-1 row: no definition, therefore no sort_order. Named to sort
+        # FIRST alphabetically, so "sinks to the bottom" is a real assertion.
+        conn.execute(
+            "insert into chore_instances (household_id, assignee_id, title, due_on) "
+            "values (%s,%s,'AAA hand-seeded legacy',%s)", (HOUSEHOLD, ada, today))
+
+        _, board = call("/api/board", KIOSK_TOKEN)
+        got = [i["title"] for i in board["instances"] if i["assignee_id"] == str(ada)]
+        check("the board orders by sort_order, not alphabetically",
+              got == ["Zebra chore", "Middle chore", "Apple chore", "AAA hand-seeded legacy"],
+              f"got {got}")
+        check("a slice-1 row with no definition sinks to the bottom (NULLS LAST)",
+              got[-1] == "AAA hand-seeded legacy", f"got {got}")
+        check("the order is stable across polls — rows must not move under a finger",
+              all([i["title"] for i in call("/api/board", KIOSK_TOKEN)[1]["instances"]
+                   if i["assignee_id"] == str(ada)] == got for _ in range(5)))
+
+        # The whole point, stated as the case that prompted it.
+        conn.execute("delete from chore_instances")
+        # Only the three just created — they have no assignments. Anything wider
+        # hits `on delete restrict` on the seeded definition, which is the FK
+        # doing its job: a definition with history cannot be deleted, only
+        # deactivated.
+        conn.execute(
+            "delete from chore_definitions where household_id = %s and name = any(%s)",
+            (HOUSEHOLD, ["Zebra chore", "Middle chore", "Apple chore"]),
+        )
+        reset_def = q(conn,
+            "insert into chore_definitions (household_id, name, cadence, sort_order) "
+            "values (%s,'15-minute family reset','daily',90) returning id", (HOUSEHOLD,))["id"]
+        morning_def = q(conn,
+            "insert into chore_definitions (household_id, name, cadence, sort_order) "
+            "values (%s,'Make your bed','daily',10) returning id", (HOUSEHOLD,))["id"]
+        for did, title in [(reset_def, "15-minute family reset"), (morning_def, "Make your bed")]:
+            conn.execute(
+                "insert into chore_instances (household_id, assignee_id, definition_id, title, due_on) "
+                "values (%s,%s,%s,%s,%s)", (HOUSEHOLD, ada, did, title, today))
+        _, board = call("/api/board", KIOSK_TOKEN)
+        got = [i["title"] for i in board["instances"] if i["assignee_id"] == str(ada)]
+        check("the 8pm family reset lands LAST, not first as the alphabet would have it",
+              got == ["Make your bed", "15-minute family reset"], f"got {got}")
     finally:
         proc.terminate()
         proc.wait(timeout=10)

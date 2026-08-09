@@ -538,8 +538,28 @@ function FamilyScreen({
         ))}
       </div>
 
-      {/* Schedule display only. It says WHEN the reset is, never that it was
-          done — there is no completion to record, so there is no checkbox. */}
+      {/* Schedule display only: it says WHEN the reset is, never whether it was
+          done, so it has no checkbox.
+
+          THIS COMMENT USED TO SAY "there is no completion to record". That is no
+          longer true, and the change is not in this file. Since slice 2 the 8pm
+          reset is a real chore_definition assigned to four people every day, so
+          it materializes into four completable rows that appear in four people's
+          lists — the same event is now on screen twice, in two different
+          grammars, and only one of them can be tapped.
+
+          Deliberately NOT reconciled here. The two are never co-visible (this is
+          the family screen, those are person screens), the strip's
+          looks-like-a-button-but-is-inert problem is pre-existing
+          (GAUNTLET-01 FIX NEXT SLICE 27), and Phase 2 already owns making this
+          strip stateful — it is specified to count down in red once cutoff has
+          passed, which means reading those instances. Fixing it now would mean
+          guessing at that design a phase early.
+
+          Phase 2 must resolve this. Either the strip shows the real state of
+          those four instances ("2 of 4 done", counting down in red), or it goes
+          away because the rows already say it. What it must not stay is a
+          hardcoded second opinion about a thing the database now knows. */}
       <div className="sheet">
         <div className="strip">
           <div className="bell" aria-hidden="true">

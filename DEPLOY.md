@@ -202,6 +202,12 @@ uv run python materialize.py --date 2026-08-29 --dry-run   # check a Saturday wi
 dependent completion and the kiosk gives them nothing to press, so it would
 materialize into a row nobody can ever clear.
 
+**`sort_order` is the order chores appear on the kiosk.** Leave gaps (10, 20, 30)
+so a new chore can slot between two without renumbering, and put end-of-day
+chores last — alphabetically the 8pm family reset sorts to the *top* of the list,
+above chores due at breakfast. It is read live, so re-ordering takes effect on
+every day at once, past and future; you do not need to re-materialize anything.
+
 ### F.3 — Set `CRON_SECRET` and deploy
 
 Add `CRON_SECRET` to the API project's environment variables, then **redeploy**

@@ -26,10 +26,29 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_kiosk)])
 
 log = logging.getLogger(__name__)
 
+# Ordered by the definition's sort_order, joined rather than snapshotted.
+#
+# sort_order is the one field it is CORRECT to read live. title is snapshotted
+# onto the instance because rewriting what the board said last Tuesday would be
+# rewriting history — but re-ordering last Tuesday's rows changes nothing that
+# was ever true about them. So this joins for it, and a re-ordering takes effect
+# everywhere at once instead of only on days materialized afterwards.
+#
+# NULLS LAST is for the slice-1 rows: they have no definition_id, so the LEFT
+# JOIN gives them a NULL sort_order. They sink to the bottom rather than sorting
+# anywhere in particular. (Postgres already defaults ascending NULLs last — said
+# out loud because the behaviour is load-bearing, not incidental.)
+#
+# ci.id is the final tiebreak, and it is not decoration: without it, two rows
+# with the same sort_order and title have an order Postgres may vary between
+# queries, which on a 60-second poll means rows swapping places under a finger.
+# That failure mode cost three rounds of the gauntlet.
 _INSTANCES_FOR_DAY = (
-    "select id, assignee_id, title, due_on, completed_at, completed_by "
-    "from chore_instances where household_id = %s and due_on = %s "
-    "order by title"
+    "select ci.id, ci.assignee_id, ci.title, ci.due_on, ci.completed_at, ci.completed_by "
+    "from chore_instances ci "
+    "left join chore_definitions d on d.id = ci.definition_id "
+    "where ci.household_id = %s and ci.due_on = %s "
+    "order by d.sort_order nulls last, ci.title, ci.id"
 )
 
 
