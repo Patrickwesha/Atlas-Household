@@ -56,8 +56,18 @@ def _migration_url() -> str:
     runs through ConfigParser, which treats `%` as interpolation syntax — and a
     generated database password containing a percent-encoded byte would blow up
     with a stack trace about "invalid interpolation" that names nothing useful.
+
+    Rendered with hide_password=False, and NOT with str(). SQLAlchemy's
+    URL.__str__ replaces the password with `***`, so str() here hands
+    create_engine a literal three-asterisk password and Neon rejects it with
+    "password authentication failed for user" — an error that points at the
+    credential rather than at this line. It survived review because the only
+    Alembic path ever exercised was the local rehearsal database
+    (postgresql://localhost/atlas_verify), which has no password to mask.
     """
-    return str(make_url(resolve_direct_url()).set(drivername="postgresql+psycopg"))
+    return make_url(resolve_direct_url()).set(
+        drivername="postgresql+psycopg"
+    ).render_as_string(hide_password=False)
 
 
 def run_migrations_offline() -> None:
