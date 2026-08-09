@@ -198,9 +198,24 @@ uv run python materialize.py --dry-run             # who gets what today. Writes
 uv run python materialize.py --date 2026-08-29 --dry-run   # check a Saturday without waiting
 ```
 
+> **Edit your existing `seed.json` — do not write a fresh one.** Every insert is
+> `on conflict (id) do nothing`, which only protects against re-running the *same*
+> file. A file with the right names but new UUIDs conflicts with nothing, so it
+> would insert a **second copy of the whole family**: ten tiles on the wall, five
+> of them duplicates with no chores. `seed.py` now refuses that (it compares names
+> against ids already in the household) and names the mismatch, but the easy path
+> is to keep using the file that already has the real ids. If you have lost it:
+>
+> ```
+> select id, name, role from members where household_id = '<your HOUSEHOLD_ID>';
+> ```
+
 `seed.py` refuses a definition assigned to a **dependent** — the API rejects a
 dependent completion and the kiosk gives them nothing to press, so it would
-materialize into a row nobody can ever clear.
+materialize into a row nobody can ever clear. It also refuses a `household.id`
+that is absent from a database which already holds another household, and warns
+when `seed.json` renames a member (the rename does *not* apply — the insert
+conflicts on id and is skipped, so the old name stays on the wall).
 
 **`sort_order` is the order chores appear on the kiosk.** Leave gaps (10, 20, 30)
 so a new chore can slot between two without renumbering, and put end-of-day

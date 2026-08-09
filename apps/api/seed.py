@@ -122,6 +122,82 @@ def _validate(data: dict[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
     return id_by_key, role_by_key
 
 
+def _guard_against_duplicate_people(
+    cur: psycopg.Cursor[Any], household: dict[str, Any], members: list[dict[str, Any]]
+) -> None:
+    """Refuse to seed if this file would ADD a second copy of the family.
+
+    Every insert here is `on conflict (id) do nothing`, which protects against
+    re-running the SAME file and nothing else. A file with the right NAMES but
+    different UUIDs conflicts with nothing, so it inserts a whole second family
+    beside the first: ten tiles on the wall, five of them un-tappable duplicates
+    with no chores. Nothing in the schema prevents it and nothing in the kiosk
+    would explain it.
+
+    That was harmless in slice 1, where seed.json was written once and never
+    touched. Slice 2 is the first time anyone edits it against a database that
+    is already live, which is exactly when the mistake becomes reachable — most
+    obviously by hand-writing a fresh seed.json instead of editing the real one.
+
+    The test is name-versus-id, not id alone, because those two cases must not be
+    treated the same:
+      - a name that already exists under a DIFFERENT id  -> a duplicate. Refuse.
+      - a name that does not exist at all                -> a NEW person. Allow.
+    A guard that blocked the second would make adding a family member impossible.
+    """
+    hh_id = UUID(household["id"])
+    known_household = cur.execute(
+        "select 1 from households where id = %s", (hh_id,)
+    ).fetchone()
+    if known_household is None:
+        other = cur.execute("select id, name from households limit 1").fetchone()
+        if other is not None:
+            raise SeedError(
+                f"household id {hh_id} is not in the database, but household "
+                f"'{other[1]}' ({other[0]}) is. Seeding would create a SECOND "
+                "household, and the kiosk (pointed at HOUSEHOLD_ID) would show an "
+                "empty board. Fix the id in seed.json to match the real one."
+            )
+        return  # genuinely fresh database — nothing to collide with
+
+    rows = cur.execute(
+        "select id, name from members where household_id = %s", (hh_id,)
+    ).fetchall()
+    if not rows:
+        return  # household exists but has no members yet
+    name_to_id = {name: mid for mid, name in rows}
+    id_to_name = {mid: name for mid, name in rows}
+
+    duplicates: list[str] = []
+    renames: list[str] = []
+    for m in members:
+        mid, mname = UUID(m["id"]), m["name"]
+        if mid in id_to_name:
+            if id_to_name[mid] != mname:
+                renames.append(f"    {id_to_name[mid]!r} -> {mname!r} (id {mid})")
+        elif mname in name_to_id:
+            duplicates.append(f"    {mname}: seed.json says {mid}, database has {name_to_id[mname]}")
+
+    if duplicates:
+        raise SeedError(
+            "these members already exist under DIFFERENT ids, so seeding would add a\n"
+            "  second copy of each — the wall would show them twice:\n"
+            + "\n".join(duplicates)
+            + "\n\n  Nothing was written. Use the ids already in the database (they are in the\n"
+            "  seed.json you originally seeded from), or query them:\n"
+            "    select id, name, role from members where household_id = '" + str(hh_id) + "';"
+        )
+
+    # A rename is legitimate but silently does NOT happen — the insert conflicts
+    # on id and is skipped, so the old name stays on the wall. Say so rather than
+    # letting someone think it applied.
+    if renames:
+        print("  NOTE: seed.json renames members, and `on conflict (id) do nothing` will")
+        print("  NOT apply the change. The database keeps the existing names:")
+        for line in renames:
+            print(line)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Seed the Atlas Household database.")
     parser.add_argument(
@@ -166,6 +242,14 @@ def main() -> int:
     assignment_rows = 0
     with psycopg.connect(direct_url) as conn:            # one transaction, commits on clean exit
         with conn.cursor() as cur:
+            # Before ANY write. Inside the transaction, so even if this somehow
+            # raised after a write the whole thing would roll back.
+            try:
+                _guard_against_duplicate_people(cur, household, members)
+            except SeedError as exc:
+                print(f"ERROR in {SEED_JSON.name}: {exc}", file=sys.stderr)
+                return 1
+
             cur.execute(
                 "insert into households (id, name) values (%s, %s) on conflict (id) do nothing",
                 (household["id"], household["name"]),
