@@ -8,6 +8,7 @@ the configured HOUSEHOLD_ID — explicit, never an implicit "first row" lookup.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -20,7 +21,15 @@ from . import config
 from .auth import require_kiosk
 from .db import get_db
 from .materialize import materialize
-from .schemas import Board, CompleteRequest, Household, Instance, Member
+from .schemas import (
+    Board,
+    CompleteRequest,
+    History,
+    HistoryDay,
+    Household,
+    Instance,
+    Member,
+)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_kiosk)])
 
@@ -52,8 +61,49 @@ _INSTANCES_FOR_DAY = (
 )
 
 
+# One row per date that HAS instances. Dates with none are simply absent, and
+# that absence is the "NO DATA" state the calendar draws as a dashed outline —
+# see schemas.HistoryDay for why it must not look like "0 of N done".
+#
+# count(ci.completed_at) counts NON-NULL values, so it is the completed tally.
+# count(*) is every row. Both scoped by household AND assignee: household_id
+# alone would leak a sibling's day into this member's calendar.
+_HISTORY_FOR_MONTH = (
+    "select ci.due_on as date, count(*) as total, count(ci.completed_at) as completed "
+    "from chore_instances ci "
+    "where ci.household_id = %s and ci.assignee_id = %s "
+    "and ci.due_on >= %s and ci.due_on < %s "
+    "group by ci.due_on "
+    "order by ci.due_on"
+)
+
+# Where the calendar stops paging back. Everything before this is blank months,
+# and letting someone scroll into them looks like history that got lost.
+_FIRST_INSTANCE_FOR_MEMBER = (
+    "select min(ci.due_on) as first_date from chore_instances ci "
+    "where ci.household_id = %s and ci.assignee_id = %s"
+)
+
+_MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
 def _today() -> date:
     return datetime.now(ZoneInfo(config.APP_TIMEZONE)).date()
+
+
+def _month_bounds(month_start: date) -> tuple[date, date]:
+    """First day of the month, and first day of the NEXT month.
+
+    A half-open range, so the query needs no knowledge of month lengths and no
+    special case for February or for December rolling the year.
+    """
+    start = month_start.replace(day=1)
+    end = (
+        date(start.year + 1, 1, 1)
+        if start.month == 12
+        else date(start.year, start.month + 1, 1)
+    )
+    return start, end
 
 
 def _self_heal(conn: psycopg.Connection[DictRow], due_on: date) -> bool:
@@ -175,3 +225,69 @@ def uncomplete_instance(
             status_code=status.HTTP_404_NOT_FOUND, detail="Instance not found"
         )
     return Instance(**row)
+
+
+@router.get("/history", response_model=History)
+def get_history(
+    member_id: UUID,
+    month: str | None = None,
+    conn: psycopg.Connection[DictRow] = Depends(get_db),
+) -> History:
+    """One member's per-day completion counts for a month. READ ONLY.
+
+    Deliberately NOT like GET /board: this route never materializes anything.
+    The board's self-heal exists because an empty wall on a school morning is a
+    failure; an empty square on a calendar is just a day that had no chores, and
+    writing rows for a date someone happens to scroll past would invent history.
+
+    `month` is OPTIONAL, and that is the point. Omitting it means "the month it
+    is now", resolved in APP_TIMEZONE on the server — so the kiosk's first
+    request needs no opinion about what today is. Only after this response does
+    it know the server's date, and every later decision (which days are future,
+    how far back paging may go) is made from `today` and `first_date` here
+    rather than from the iPad's clock.
+
+    A dependent is not special-cased. They cannot complete a chore and the kiosk
+    gives them no tile, so this returns an empty month for them — but the rule
+    that keeps them off the calendar is a UI rule, and putting a role check in a
+    read-only counting query would state it in a second place that could later
+    disagree with the first.
+    """
+    known = conn.execute(
+        "select 1 from members where id = %s and household_id = %s",
+        (member_id, config.HOUSEHOLD_ID),
+    ).fetchone()
+    if known is None:
+        # 404, not an empty month: an unknown id is a bug or a probe, and
+        # answering it with a plausible-looking empty calendar hides both.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No such member in this household",
+        )
+
+    today = _today()
+    if month is None:
+        month_start = today
+    else:
+        if _MONTH_RE.match(month) is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="month must be YYYY-MM",
+            )
+        month_start = date(int(month[:4]), int(month[5:7]), 1)
+
+    start, end = _month_bounds(month_start)
+    rows = conn.execute(
+        _HISTORY_FOR_MONTH, (config.HOUSEHOLD_ID, member_id, start, end)
+    ).fetchall()
+    first = conn.execute(
+        _FIRST_INSTANCE_FOR_MEMBER, (config.HOUSEHOLD_ID, member_id)
+    ).fetchone()
+
+    return History(
+        member_id=member_id,
+        month=f"{start.year:04d}-{start.month:02d}",
+        today=today,
+        first_date=None if first is None else first["first_date"],
+        days=[HistoryDay(**r) for r in rows],
+    )

@@ -33,6 +33,28 @@ export interface Board {
   instances: Instance[]
 }
 
+// One date that HAS instances. A date MISSING from History.days has none at
+// all, and the calendar draws that as its own state — not as an empty ring,
+// which would read as "you did none of your chores" on a day nobody was asked.
+export interface HistoryDay {
+  date: string
+  total: number
+  completed: number
+}
+
+export interface History {
+  member_id: string
+  month: string
+  // Both dates come from the SERVER, in APP_TIMEZONE. The calendar decides
+  // which days are "future" and how far back it may page from these, never
+  // from the iPad's clock — a wall display with a skewed clock is a recorded
+  // failure (GAUNTLET-01, FIX NEXT SLICE 19 and 20) and it would otherwise grey
+  // out real history.
+  today: string
+  first_date: string | null
+  days: HistoryDay[]
+}
+
 const BASE = import.meta.env.VITE_API_BASE_URL
 const TOKEN_KEY = 'atlas_device_token'
 
@@ -137,4 +159,12 @@ export function completeInstance(id: string, completedBy: string): Promise<Insta
 
 export function uncompleteInstance(id: string): Promise<Instance> {
   return request<Instance>(`/api/instances/${id}/uncomplete`, { method: 'POST' })
+}
+
+// month is optional on purpose: omitting it asks the server which month it is,
+// so the kiosk's first calendar request carries no assumption about the date.
+export function getHistory(memberId: string, month?: string): Promise<History> {
+  const query = new URLSearchParams({ member_id: memberId })
+  if (month !== undefined) query.set('month', month)
+  return request<History>(`/api/history?${query.toString()}`)
 }

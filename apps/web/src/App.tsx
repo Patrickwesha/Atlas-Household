@@ -5,10 +5,13 @@ import {
   clearToken,
   completeInstance,
   getBoard,
+  getHistory,
   getToken,
   setToken,
   uncompleteInstance,
   type Board,
+  type History,
+  type HistoryDay,
   type Instance,
   type Member,
 } from './api'
@@ -433,7 +436,11 @@ export default function App() {
     <>
       <Shell banner={error ? `⚠ ${error} Showing the last board that loaded.` : null}>
         {selected ? (
+          // Keyed by member so the screen genuinely remounts per person: the
+          // tab, the browsed month and the month cache are all per-member, and
+          // a kid must never open their name onto the previous kid's calendar.
           <PersonScreen
+            key={selected.id}
             member={selected}
             index={board.members.indexOf(selected)}
             chores={board.instances.filter((i) => i.assignee_id === selected.id)}
@@ -646,6 +653,20 @@ function PersonScreen({
   const done = chores.filter((c) => c.completed_at !== null).length
   const pct = chores.length === 0 ? 0 : Math.round((done / chores.length) * 100)
 
+  const [tab, setTab] = useState<'today' | 'calendar'>('today')
+  // The browsed month and the fetched months live HERE, not inside the
+  // calendar, so switching Today -> Calendar -> Today does not lose your place
+  // or refetch. null means "whichever month the server says it is". Both die
+  // with this screen, so the next person starts fresh.
+  const [calMonth, setCalMonth] = useState<string | null>(null)
+  const calCache = useRef<Map<string, History>>(new Map())
+
+  // The dependent gets no tabs and no calendar. They cannot be selected from
+  // the family screen — their card is not a button — so this is belt and
+  // braces. Stated anyway: the rule is "a dependent has no calendar", not
+  // "there is currently no route to one".
+  const showTabs = member.role !== 'dependent'
+  const onCalendar = showTabs && tab === 'calendar'
 
   return (
     <div className="screen">
@@ -665,10 +686,35 @@ function PersonScreen({
             <i style={{ width: `${pct}%` }} />
           </div>
         </div>
+        {showTabs && (
+          <div className="tabs">
+            <button
+              className={`tab${onCalendar ? '' : ' on'}`}
+              aria-pressed={!onCalendar}
+              onClick={() => setTab('today')}
+            >
+              Today
+            </button>
+            <button
+              className={`tab${onCalendar ? ' on' : ''}`}
+              aria-pressed={onCalendar}
+              onClick={() => setTab('calendar')}
+            >
+              Calendar
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="sheet grow">
-        {chores.length === 0 ? (
+        {onCalendar ? (
+          <CalendarPanel
+            member={member}
+            month={calMonth}
+            onMonth={setCalMonth}
+            cache={calCache.current}
+          />
+        ) : chores.length === 0 ? (
           // No confetti. An empty list is almost never "you finished" — a
           // finished list still shows its rows, ticked. Empty means nothing was
           // put on the board, which is not an achievement to celebrate.
@@ -694,6 +740,254 @@ function PersonScreen({
           </ul>
         )}
       </div>
+    </div>
+  )
+}
+
+// ---------- calendar ----------
+//
+// Every decision about WHAT DAY IT IS comes from the server: `today` and
+// `first_date` arrive in the History payload, resolved in APP_TIMEZONE. The
+// iPad's own clock is never consulted, because a wall display with a skewed or
+// wrong clock is a recorded failure (GAUNTLET-01, FIX NEXT SLICE 19 and 20) and
+// here it would grey out days that really happened. UTC Dates appear below
+// purely as a calendar calculator — the weekday of the 1st, and how many days a
+// month has — where no timezone can leak into the answer.
+
+const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+// Five states. The two a naive calendar collapses are 'nodata' and a 'partial'
+// with nothing completed: the first is a date with NO instances at all — before
+// this system existed, or a day nothing was scheduled — and the second is a real
+// day on which someone did none of their chores. The prototype drew both as the
+// same empty ring. That ring says "you did none of your chores", so showing it
+// for a day nobody was asked anything is the board accusing a kid of failing at
+// something that was never on it. 'nodata' is therefore a dashed outline and
+// never a ring.
+type DayState = 'complete' | 'partial' | 'today' | 'nodata' | 'future'
+
+function monthOf(isoDate: string): string {
+  return isoDate.slice(0, 7)
+}
+
+function shiftMonth(month: string, delta: number): string {
+  const index = Number(month.slice(0, 4)) * 12 + (Number(month.slice(5, 7)) - 1) + delta
+  const year = String(Math.floor(index / 12)).padStart(4, '0')
+  const mon = String((index % 12) + 1).padStart(2, '0')
+  return `${year}-${mon}`
+}
+
+function monthUtc(month: string, day: number): Date {
+  return new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, day))
+}
+
+function monthLabel(month: string): string {
+  return monthUtc(month, 1).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+function daysInMonth(month: string): number {
+  // Day 0 of the next month is the last day of this one.
+  return new Date(
+    Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0),
+  ).getUTCDate()
+}
+
+/** Monday-first, matching the prototype's grid. */
+function leadingBlanks(month: string): number {
+  return (monthUtc(month, 1).getUTCDay() + 6) % 7
+}
+
+function dayState(iso: string, today: string, entry: HistoryDay | undefined): DayState {
+  // Today is gold whatever the progress. It is the one day still in play, and
+  // grading it at 9am would mark a kid part-done for chores that are not due
+  // yet — then change again under them as the day goes on.
+  if (iso === today) return 'today'
+  if (iso > today) return 'future'
+  if (entry === undefined || entry.total === 0) return 'nodata'
+  return entry.completed >= entry.total ? 'complete' : 'partial'
+}
+
+function dayLabel(day: number, state: DayState, entry: HistoryDay | undefined): string {
+  if (state === 'today') return `${day}, today`
+  if (state === 'future') return `${day}, still to come`
+  if (state === 'nodata' || entry === undefined) return `${day}, nothing was on the board`
+  if (state === 'complete') return `${day}, all ${entry.total} done`
+  return `${day}, ${entry.completed} of ${entry.total} done`
+}
+
+function CalendarPanel({
+  member,
+  month,
+  onMonth,
+  cache,
+}: {
+  member: Member
+  month: string | null
+  onMonth: (month: string) => void
+  cache: Map<string, History>
+}) {
+  // null means "whichever month the server says it is", so the first request
+  // carries no assumption about the date at all.
+  const cacheKey = month ?? '@current'
+  const [data, setData] = useState<History | null>(() => cache.get(cacheKey) ?? null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const hit = cache.get(cacheKey)
+    if (hit !== undefined) {
+      setData(hit)
+      setError(null)
+      return
+    }
+    let cancelled = false
+    getHistory(member.id, month ?? undefined)
+      .then((fetched) => {
+        if (cancelled) return
+        // Stored under BOTH the key asked for and the month actually served, so
+        // that asking for "the current month" and later paging back to it is a
+        // cache hit rather than a second request for the same data.
+        cache.set(cacheKey, fetched)
+        cache.set(fetched.month, fetched)
+        setData(fetched)
+        setError(null)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setError(
+          err instanceof NetworkError
+            ? "Can't reach the server."
+            : 'Could not load the calendar.',
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [member.id, month, cacheKey, cache])
+
+  if (data === null) {
+    return (
+      <div className="cal">
+        <p className="cal-msg">{error ?? 'Loading…'}</p>
+      </div>
+    )
+  }
+
+  // What the header claims vs. what we actually hold. When a month button is
+  // pressed the header moves immediately — a nav control that looks dead for a
+  // cold Lambda's worth of latency is the exact failure the gauntlet spent
+  // three rounds on — while the grid says it is loading rather than showing the
+  // previous month's squares under the new month's name.
+  const shown = month ?? data.month
+  const loaded = data.month
+  const stale = shown !== loaded
+
+  const firstMonth = data.first_date === null ? null : monthOf(data.first_date)
+  // Never page back past this member's first recorded day, and never into a
+  // month that has not happened. Both bounds are the server's, not the iPad's.
+  const canPrev = firstMonth !== null && shown > firstMonth
+  const canNext = shown < monthOf(data.today)
+
+  const byDate = new Map(data.days.map((d) => [d.date, d]))
+  const cells: ReactNode[] = []
+  if (!stale) {
+    for (let i = 0; i < leadingBlanks(loaded); i++) {
+      cells.push(<div key={`pad-${i}`} className="day day-pad" aria-hidden="true" />)
+    }
+    for (let day = 1; day <= daysInMonth(loaded); day++) {
+      const iso = `${loaded}-${String(day).padStart(2, '0')}`
+      const entry = byDate.get(iso)
+      const state = dayState(iso, data.today, entry)
+      const pct =
+        entry !== undefined && entry.total > 0
+          ? Math.round((entry.completed / entry.total) * 100)
+          : 0
+      cells.push(
+        <div
+          key={iso}
+          className={`day day-${state}`}
+          role="img"
+          aria-label={dayLabel(day, state, entry)}
+        >
+          <div className="r" style={{ ['--p' as string]: pct }}>
+            <em>{day}</em>
+          </div>
+        </div>,
+      )
+    }
+  }
+
+  return (
+    <div className="cal">
+      <div className="mon">
+        <b>{monthLabel(shown)}</b>
+        <button
+          className="nav last"
+          onClick={() => onMonth(shiftMonth(shown, -1))}
+          disabled={!canPrev}
+          aria-label="Previous month"
+        >
+          ‹
+        </button>
+        <button
+          className="nav"
+          onClick={() => onMonth(shiftMonth(shown, 1))}
+          disabled={!canNext}
+          aria-label="Next month"
+        >
+          ›
+        </button>
+      </div>
+
+      {error !== null && <p className="cal-msg">{error}</p>}
+
+      {stale ? (
+        <p className="cal-msg">Loading…</p>
+      ) : (
+        <>
+          <div className="grid">
+            {DOW.map((d) => (
+              <div key={d} className="dow">
+                {d}
+              </div>
+            ))}
+            {cells}
+          </div>
+          {/* Four entries, because there are four things a square can mean. The
+              fourth is the one that has to be there: without it a dashed square
+              is a mystery, and the honest answer ("nothing was on the board") is
+              exactly what stops it reading as a failed day. */}
+          <div className="legend">
+            <span>
+              <i className="key key-complete">
+                <em />
+              </i>
+              Full circle — everything done
+            </span>
+            <span>
+              <i className="key key-partial">
+                <em />
+              </i>
+              Part circle — some left undone
+            </span>
+            <span>
+              <i className="key key-today">
+                <em />
+              </i>
+              Today
+            </span>
+            <span>
+              <i className="key key-nodata">
+                <em />
+              </i>
+              Dashed — nothing was on the board
+            </span>
+          </div>
+        </>
+      )}
     </div>
   )
 }

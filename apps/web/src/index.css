@@ -29,6 +29,27 @@
   --danger: #b3123c;
   --pad: clamp(16px, 2vw, 30px);
 
+  /* Calendar. The prototype drew every day square as a conic dial over
+   * --ring-empty, which is 1.26:1 against the white sheet — so a day with
+   * NOTHING done showed a ring you cannot see, indistinguishable from a day
+   * with no data and from a future day. There is no single colour that fixes
+   * it: at 3:1 against white the track would be too dark to keep 3:1 against
+   * the violet arc. So the states are told apart by MARK, not by luminance —
+   * solid rim, dashed rim, no rim — and each colour below still clears its own
+   * bar.
+   *
+   * --cal-track  vs --violet  3.68:1  (how much of the dial is filled)
+   * --cal-rim    vs white     4.35:1  (a dial exists here, even at 0%)
+   * --cal-muted  vs white     3.34:1  (dashed "no data" rim, future numbers) */
+  --cal-track: #d8d2ee;
+  --cal-rim: #7c72a8;
+  --cal-muted: #8f88ad;
+  /* On --gold: 5.16:1. The prototype's #a06e00 measured 2.82:1 on it. */
+  --cal-today-ink: #6b4900;
+  /* The gold disc is only 1.58:1 against the white sheet, so it needs an edge
+   * of its own or "today" dissolves into the page. 4.44:1 against white. */
+  --cal-today-rim: #a06e00;
+
   font-family: 'Nunito', 'SF Pro Rounded', ui-rounded, 'Avenir Next Rounded',
     system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -627,6 +648,237 @@ button {
   visibility: hidden;
 }
 
+/* ---------- Today / Calendar tabs ---------- */
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+/* CONTRAST: the prototype dimmed the inactive tab to opacity .8. White text on
+ * the magenta end of the gradient is already 4.09:1, and the dimming pushed it
+ * under every bar — the same mistake as the dependent card's opacity (see
+ * GAUNTLET-01 round 2, finding 25). Full opacity, and sized so it is
+ * unambiguously large text (>=18.66px at weight 800) at the wall's viewport,
+ * which is the honest bar for it: 4.09:1 against a 3:1 requirement. */
+.tab {
+  padding: 10px clamp(16px, 2vw, 26px);
+  border-radius: 999px;
+  font-weight: 800;
+  color: #fff;
+  font-size: clamp(18px, 1.6vw, 22px);
+  transition:
+    background 0.2s ease,
+    transform 0.16s ease;
+}
+.tab:active {
+  transform: scale(0.97);
+}
+/* 5.38:1. The active tab is a filled pill, so it is told from the inactive one
+ * by fill and by ink colour, never by colour alone. */
+.tab.on {
+  background: #fff;
+  color: var(--violet);
+}
+
+/* ---------- calendar ---------- */
+
+.cal {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.cal-msg {
+  margin: clamp(18px, 3vw, 40px) 0;
+  text-align: center;
+  color: var(--grey);
+  font-size: clamp(17px, 1.7vw, 22px);
+  font-weight: 700;
+}
+.mon {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: clamp(10px, 1.4vw, 18px);
+}
+.mon b {
+  font-size: clamp(19px, 2vw, 28px);
+  font-weight: 800;
+}
+.nav {
+  width: 52px;
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--wash);
+  display: grid;
+  place-items: center;
+  color: var(--violet);
+  font-size: 22px;
+  font-weight: 800;
+  transition:
+    transform 0.16s ease,
+    background 0.2s ease;
+}
+.nav.last {
+  margin-left: auto;
+}
+.nav:active:not(:disabled) {
+  transform: scale(0.94);
+  background: #e8e3f8;
+}
+/* A disabled month button is not a broken one: there is genuinely nothing
+ * before the first day on record, or after today. Dimmed AND non-interactive,
+ * so a press that does nothing is never a surprise. */
+.nav:disabled {
+  color: var(--cal-muted);
+  background: #f8f7fc;
+  cursor: default;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: clamp(6px, 0.9vw, 14px);
+}
+.dow {
+  text-align: center;
+  font-size: clamp(13px, 1.2vw, 16px);
+  font-weight: 700;
+  color: var(--grey);
+  padding-bottom: 4px;
+}
+.day {
+  display: grid;
+  place-items: center;
+}
+.day .r {
+  width: clamp(46px, 5.2vw, 72px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  padding: 5px;
+  background: conic-gradient(var(--violet) calc(var(--p) * 1%), var(--cal-track) 0);
+  /* The rim is what makes a 0%-complete day legible as a dial with nothing in
+   * it, rather than as an absence. It is the difference between "you did none
+   * of these" and "there was nothing to do", which is the whole point of the
+   * fourth state. */
+  box-shadow: 0 0 0 2px var(--cal-rim);
+}
+.day .r em {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-weight: 700;
+  font-size: clamp(14px, 1.5vw, 20px);
+  color: var(--ink);
+}
+/* 5.38:1 on white. */
+.day-complete .r em {
+  color: var(--violet);
+  font-weight: 800;
+}
+.day-today .r {
+  background: var(--gold);
+  box-shadow: 0 0 0 2px var(--cal-today-rim);
+}
+.day-today .r em {
+  background: none;
+  color: var(--cal-today-ink);
+  font-weight: 800;
+}
+/* NO DATA. A dashed outline and no dial at all — deliberately not an empty
+ * ring, which says "you did none of your chores". No instances ever existed for
+ * this date, so the board has nothing to report and says so. */
+.day-nodata .r {
+  background: none;
+  padding: 0;
+  box-shadow: none;
+  border: 2px dashed var(--cal-muted);
+}
+.day-nodata .r em {
+  background: none;
+  color: var(--grey);
+  font-weight: 700;
+}
+/* Future: no dial, no outline, nothing to read as a score. Distinct from NO
+ * DATA by the absence of the dashed edge, not by a shade of the same mark. */
+.day-future .r {
+  background: none;
+  padding: 0;
+  box-shadow: none;
+}
+.day-future .r em {
+  background: none;
+  color: var(--cal-muted);
+  font-weight: 700;
+}
+.day-pad {
+  visibility: hidden;
+}
+
+.legend {
+  display: flex;
+  gap: clamp(14px, 1.8vw, 26px);
+  flex-wrap: wrap;
+  margin-top: clamp(14px, 1.8vw, 24px);
+  font-size: clamp(13px, 1.3vw, 17px);
+  font-weight: 700;
+  color: var(--grey);
+}
+.legend span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.key {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  padding: 3px;
+  box-shadow: 0 0 0 2px var(--cal-rim);
+}
+.key em {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
+}
+.key-complete {
+  background: conic-gradient(var(--violet) 100%, var(--cal-track) 0);
+}
+.key-partial {
+  background: conic-gradient(var(--violet) 50%, var(--cal-track) 0);
+}
+.key-today {
+  background: var(--gold);
+  box-shadow: 0 0 0 2px var(--cal-today-rim);
+}
+.key-today em {
+  background: none;
+}
+.key-nodata {
+  background: none;
+  padding: 0;
+  box-shadow: none;
+  border: 2px dashed var(--cal-muted);
+}
+.key-nodata em {
+  background: none;
+}
+
 @media (max-width: 900px) {
   .people {
     grid-template-columns: repeat(3, 1fr);
@@ -636,6 +888,13 @@ button {
   }
   .head {
     flex-wrap: wrap;
+  }
+  /* Full width on its own row rather than squeezed beside the name. */
+  .tabs {
+    margin-left: 0;
+    width: 100%;
+    order: 5;
+    justify-content: center;
   }
 }
 
