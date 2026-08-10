@@ -793,12 +793,26 @@ button {
   color: var(--violet);
   font-weight: 800;
 }
+/* Today keeps the SAME geometry as every other state — a rim around a white
+ * centre — and differs only by colour and rim weight. It must not become a
+ * filled disc: that would be the one solid mark in the grid, breaking the
+ * rim-based system the other four states are read by, and it would put the
+ * numeral on gold instead of on white like every other day.
+ *
+ * The inner `em` therefore keeps the white background it inherits from
+ * `.day .r em`. Overriding it to `none` is exactly what turned this into a
+ * disc. */
 .day-today .r {
   background: var(--gold);
   box-shadow: 0 0 0 2px var(--cal-today-rim);
 }
+/* CONTRAST: the numeral sits on the WHITE centre, not on the gold, so it is
+ * measured against white. The prototype's #A06E00 is 4.44:1 there — and the
+ * numeral renders at 1.5vw, which is 18.15px on the 11in iPad Pro (1210px
+ * wide). That is just under the 18.66px bold threshold for "large text", so
+ * the bar is 4.5:1 and #A06E00 misses it by 0.06. Deepened to #6b4900, which
+ * is 8.15:1 and clears the bar at every viewport rather than at some. */
 .day-today .r em {
-  background: none;
   color: var(--cal-today-ink);
   font-weight: 800;
 }
@@ -887,12 +901,12 @@ button {
 .key-partial {
   background: conic-gradient(var(--violet) 50%, var(--cal-track) 0);
 }
+/* Same fix as .day-today: a gold RING with a white centre, not a disc. A
+ * legend swatch that does not match the mark it explains is worse than no
+ * legend. */
 .key-today {
   background: var(--gold);
   box-shadow: 0 0 0 2px var(--cal-today-rim);
-}
-.key-today em {
-  background: none;
 }
 .key-nodata {
   background: none;
