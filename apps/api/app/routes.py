@@ -158,7 +158,7 @@ def _self_heal(conn: psycopg.Connection[DictRow], due_on: date) -> bool:
     nothing` makes the loser of any race a no-op.
     """
     try:
-        return len(materialize(conn, config.HOUSEHOLD_ID, due_on)) > 0
+        return len(materialize(conn, config.HOUSEHOLD_ID, due_on, config.APP_TIMEZONE)) > 0
     except Exception:
         log.exception("Board self-heal failed for %s; serving the board as-is", due_on)
         return False

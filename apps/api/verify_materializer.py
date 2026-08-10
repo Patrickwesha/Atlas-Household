@@ -38,6 +38,10 @@ HOUSEHOLD = UUID("00000000-0000-0000-0000-0000000000f1")
 
 # Fixed dates with known weekdays. Hard-coded rather than computed, so a bug in
 # the test's own date arithmetic cannot agree with a bug in the code under test.
+# The household timezone every cutoff is resolved through. Required by
+# materialize() rather than defaulted, so it is stated once here.
+TZ = "America/Chicago"
+
 MONDAY = date(2026, 8, 3)      # a Monday, in the past
 TUESDAY = date(2026, 8, 4)
 SATURDAY = date(2026, 8, 29)   # a Saturday, in the future
@@ -132,7 +136,7 @@ def main() -> int:
 
         # ---- 1. The right people get the right chores on the right weekday ----
         print("\nWeekday routing")
-        materialize(conn, HOUSEHOLD, MONDAY)
+        materialize(conn, HOUSEHOLD, MONDAY, TZ)
         check("Monday: the Mon/Wed/Fri person gets the kitchen reset",
               "Kitchen reset" in titles_for(conn, "Ada", MONDAY))
         check("Monday: the Tue/Thu/Sat person does NOT",
@@ -146,19 +150,19 @@ def main() -> int:
         check("An is_active=false definition never materializes",
               "Retired chore" not in titles_for(conn, "Cy", MONDAY))
 
-        materialize(conn, HOUSEHOLD, TUESDAY)
+        materialize(conn, HOUSEHOLD, TUESDAY, TZ)
         check("Tuesday: the split flips to the other person",
               "Kitchen reset" in titles_for(conn, "Ben", TUESDAY)
               and "Kitchen reset" not in titles_for(conn, "Ada", TUESDAY))
 
-        materialize(conn, HOUSEHOLD, SATURDAY)
+        materialize(conn, HOUSEHOLD, SATURDAY, TZ)
         check("Future Saturday: the Saturday-only chore appears",
               "Deep clean" in titles_for(conn, "Cy", SATURDAY))
         check("Future Saturday: the kitchen reset is on the Tue/Thu/Sat person",
               "Kitchen reset" in titles_for(conn, "Ben", SATURDAY)
               and "Kitchen reset" not in titles_for(conn, "Ada", SATURDAY))
 
-        materialize(conn, HOUSEHOLD, SUNDAY)
+        materialize(conn, HOUSEHOLD, SUNDAY, TZ)
         check("Sunday: nobody has the kitchen reset (assigned to neither Sun)",
               titles_for(conn, "Ada", SUNDAY) == {"Family reset"}
               and titles_for(conn, "Ben", SUNDAY) == {"Family reset"})
@@ -178,7 +182,7 @@ def main() -> int:
         before = conn.execute(
             "select id from chore_instances where due_on = %s order by id", (MONDAY,)
         ).fetchall()
-        created_again = materialize(conn, HOUSEHOLD, MONDAY)
+        created_again = materialize(conn, HOUSEHOLD, MONDAY, TZ)
         after = conn.execute(
             "select id from chore_instances where due_on = %s order by id", (MONDAY,)
         ).fetchall()
@@ -201,7 +205,7 @@ def main() -> int:
         stamp = q(conn, 
             "select completed_at, completed_by from chore_instances where id = %s", (target,)
         )
-        materialize(conn, HOUSEHOLD, MONDAY)
+        materialize(conn, HOUSEHOLD, MONDAY, TZ)
         after_row = q(conn, 
             "select completed_at, completed_by from chore_instances where id = %s", (target,)
         )
@@ -228,7 +232,7 @@ def main() -> int:
         )["id"]
         check("two null-definition rows for the same person+day coexist "
               "(NULLs are distinct in the unique index)", legacy != legacy_twin)
-        materialize(conn, HOUSEHOLD, MONDAY)
+        materialize(conn, HOUSEHOLD, MONDAY, TZ)
         check("a materializer run leaves them alone",
               q(conn, 
                   "select count(*) as n from chore_instances where id = any(%s)", ([legacy, legacy_twin],)
@@ -238,11 +242,11 @@ def main() -> int:
         print("\nTitle snapshot")
         conn.execute("update chore_definitions set name = 'Kitchen reset (renamed)' where id = %s",
                      (ids["kitchen"],))
-        materialize(conn, HOUSEHOLD, MONDAY)
+        materialize(conn, HOUSEHOLD, MONDAY, TZ)
         check("renaming a definition does not rewrite an existing instance",
               "Kitchen reset" in titles_for(conn, "Ada", MONDAY))
         future = MONDAY + timedelta(days=7)
-        materialize(conn, HOUSEHOLD, future)
+        materialize(conn, HOUSEHOLD, future, TZ)
         check("but a newly materialized day picks up the new name",
               "Kitchen reset (renamed)" in titles_for(conn, "Ada", future))
 
@@ -278,7 +282,7 @@ def main() -> int:
 
         sats = [date(2026, 8, 15) + timedelta(days=7 * i) for i in range(4)]
         for s in sats:
-            materialize(conn, HOUSEHOLD, s)
+            materialize(conn, HOUSEHOLD, s, TZ)
         # Narrowed to the zone titles: these people also carry the fixture's daily
         # chores, and asserting over their whole list would be testing the
         # fixture rather than the parity.
@@ -311,7 +315,7 @@ def main() -> int:
               [d.isocalendar()[1] % 2 for d in ny] not in ([0, 1, 0, 1], [1, 0, 1, 0]),
               "isocalendar() alternated here; re-check the assumption")
         for d in ny:
-            materialize(conn, HOUSEHOLD, d)
+            materialize(conn, HOUSEHOLD, d, TZ)
         ny_zones = [titles_for(conn, "Ada", d) for d in ny]
         check("and the zones themselves keep swapping through New Year",
               all(ny_zones[i] != ny_zones[i + 1] for i in range(3)), f"{ny_zones}")
@@ -325,7 +329,7 @@ def main() -> int:
             "insert into chore_assignments (definition_id, member_id, day_of_week, week_parity) "
             "values (%s,%s,5,null)", (every, pids["Ada"]))
         for s in sats:
-            materialize(conn, HOUSEHOLD, s)
+            materialize(conn, HOUSEHOLD, s, TZ)
         check("a null-parity assignment materializes on BOTH parities",
               all("Every Saturday" in titles_for(conn, "Ada", s) for s in sats))
         check("a parity-specific one still does not",
@@ -344,10 +348,11 @@ def main() -> int:
             previewed = {
                 (r["member_name"], r["title"])
                 for r in conn.execute(
-                    CLI_PREVIEW, {**schedule_params(HOUSEHOLD, day), "due_on": day}
+                    CLI_PREVIEW,
+                    {**schedule_params(HOUSEHOLD, day), "due_on": day, "tz": TZ},
                 ).fetchall()
             }
-            materialize(conn, HOUSEHOLD, day)
+            materialize(conn, HOUSEHOLD, day, TZ)
             actual = {
                 (r["name"], r["title"])
                 for r in conn.execute(
@@ -376,7 +381,7 @@ def main() -> int:
             (other_def, other_member),
         )
         day = MONDAY + timedelta(days=14)
-        materialize(conn, HOUSEHOLD, day)
+        materialize(conn, HOUSEHOLD, day, TZ)
         check("another household's definitions never materialize into this one",
               q(conn, 
                   "select count(*) as n from chore_instances where due_on = %s and title = 'Their chore'",

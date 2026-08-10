@@ -200,7 +200,7 @@ def main() -> int:
 
         # ---- Board ordering: sort_order, not the alphabet ----
         #
-        # This is the reason the change exists: the 8pm family reset is a real
+        # This is the reason the change exists: the nightly family reset is a real
         # chore now, and alphabetically "15-minute family reset" sorts to the TOP
         # of the list — above chores due at breakfast. Ordering by the
         # definition's sort_order puts the end of the day at the end of the list.
@@ -256,7 +256,7 @@ def main() -> int:
                 "values (%s,%s,%s,%s,%s)", (HOUSEHOLD, ada, did, title, today))
         _, board = call("/api/board", KIOSK_TOKEN)
         got = [i["title"] for i in board["instances"] if i["assignee_id"] == str(ada)]
-        check("the 8pm family reset lands LAST, not first as the alphabet would have it",
+        check("the nightly family reset lands LAST, not first as the alphabet would have it",
               got == ["Make your bed", "15-minute family reset"], f"got {got}")
     finally:
         proc.terminate()

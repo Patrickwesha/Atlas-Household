@@ -15,8 +15,20 @@ WHAT IT DOES NOT DO
   would be a second source of truth that can disagree with completed_at, it
   needs a nightly UPDATE across real history to maintain, and it goes ambiguous
   the moment someone completes yesterday's chore this morning.
-- It does not write cutoff_at. That column belongs to Phase 2 and is deliberately
-  left NULL here.
+- It does not stamp anything "late" either. Late is `cutoff_at < now() and
+  completed_at is null`, derived at read time for the same reasons.
+
+WHAT IT NOW DOES WRITE: cutoff_at, resolved per instance as
+`due_on + definition.cutoff_time` interpreted in the HOUSEHOLD's timezone. A
+definition with no cutoff_time still gets NULL, which means "no deadline" and
+never "already late".
+
+Resolved per instance rather than stored absolute on the definition, for the
+same reason day_of_week is a weekday and not a date: cutoff_time is a wall-clock
+RULE ("by 9:30 PM"), and a stored timestamp would drift by an hour on the two
+DST mornings a year — on exactly the days nobody would think to check. Doing the
+conversion in Postgres with `at time zone` means the offset is chosen per date,
+so 9:30 PM stays 9:30 PM across the change.
 """
 
 from __future__ import annotations
@@ -57,9 +69,25 @@ SCHEDULE_WHERE = """
 #
 # `d.name` is copied into `title` at insert time and never read again. Renaming a
 # definition must not rewrite what the board said last Tuesday.
+#
+# cutoff_at is SNAPSHOTTED here for the same reason title is: it is what the
+# board promised on the day. Moving a cutoff must not retroactively make last
+# Tuesday's finished chores late. (sort_order stays joined-not-snapshotted, and
+# that asymmetry is deliberate — see CLAUDE.md.)
+#
+# `(date + time)` yields a naive timestamp, and `at time zone %(tz)s` reads that
+# as a wall clock in the household's zone and returns the timestamptz for it.
+# The offset is therefore chosen per date, so a 9:30 PM cutoff is 9:30 PM on
+# both sides of a DST change. A null cutoff_time propagates to a null cutoff_at,
+# which means "no deadline" — never "already late".
 _INSERT_DAY = f"""
-    insert into chore_instances (household_id, assignee_id, definition_id, title, due_on)
-    select d.household_id, a.member_id, d.id, d.name, %(due_on)s
+    insert into chore_instances
+        (household_id, assignee_id, definition_id, title, due_on, cutoff_at)
+    select d.household_id, a.member_id, d.id, d.name, %(due_on)s,
+           case
+               when d.cutoff_time is null then null
+               else (%(due_on)s::date + d.cutoff_time) at time zone %(tz)s
+           end
       from chore_definitions d
       join chore_assignments a on a.definition_id = d.id
     {SCHEDULE_WHERE}
@@ -117,15 +145,22 @@ def schedule_params(household_id: UUID, due_on: date) -> dict[str, object]:
 
 
 def materialize(
-    conn: psycopg.Connection[DictRow], household_id: UUID, due_on: date
+    conn: psycopg.Connection[DictRow], household_id: UUID, due_on: date, tz: str
 ) -> list[UUID]:
     """Create `due_on`'s chore instances for a household. Returns the ids created.
 
     Idempotent: an empty list means every instance for that day already existed,
     which is the expected result of every run after the first.
+
+    `tz` is the household's timezone name, and it is a REQUIRED argument rather
+    than a default. Every cutoff on the board is resolved through it, so a wrong
+    or silently-defaulted zone would shift every deadline by hours — and the
+    symptom would be chores going red at the wrong time of day, which reads as
+    "the kids are late" rather than as a bug. A caller has to say which zone it
+    means.
     """
     rows = conn.execute(
         _INSERT_DAY,
-        {**schedule_params(household_id, due_on), "due_on": due_on},
+        {**schedule_params(household_id, due_on), "due_on": due_on, "tz": tz},
     ).fetchall()
     return [row["id"] for row in rows]

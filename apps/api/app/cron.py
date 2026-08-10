@@ -46,5 +46,5 @@ def run_materializer(
     "it ran and had work to do".
     """
     due_on = _today()
-    created = materialize(conn, config.HOUSEHOLD_ID, due_on)
+    created = materialize(conn, config.HOUSEHOLD_ID, due_on, config.APP_TIMEZONE)
     return MaterializeResult(due_on=due_on, created=len(created))

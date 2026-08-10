@@ -55,6 +55,8 @@ _PREVIEW = f"""
            m.role as member_role,
            d.name as title,
            d.area as area,
+           d.cutoff_time as cutoff_time,
+           ((%(due_on)s::date + d.cutoff_time) at time zone %(tz)s) as cutoff_at,
            exists (
                select 1 from chore_instances ci
                 where ci.definition_id = d.id
@@ -86,7 +88,8 @@ def main() -> int:
     args = parser.parse_args()
 
     load_env_file(REPO_ROOT / ".env")
-    tz = ZoneInfo(os.environ.get("APP_TIMEZONE", "America/Chicago"))
+    tz_name = os.environ.get("APP_TIMEZONE", "America/Chicago")
+    tz = ZoneInfo(tz_name)
 
     household_raw = os.environ.get("HOUSEHOLD_ID", "").strip()
     if not household_raw:
@@ -123,7 +126,8 @@ def main() -> int:
 
     with psycopg.connect(direct_url, autocommit=True, row_factory=dict_row) as conn:
         preview = conn.execute(
-            _PREVIEW, {**schedule_params(household_id, due_on), "due_on": due_on}
+            _PREVIEW,
+            {**schedule_params(household_id, due_on), "due_on": due_on, "tz": tz_name},
         ).fetchall()
 
         if not preview:
@@ -133,7 +137,7 @@ def main() -> int:
 
         created: list[UUID] = []
         if not args.dry_run:
-            created = materialize(conn, household_id, due_on)
+            created = materialize(conn, household_id, due_on, tz_name)
 
         current_member = None
         for row in preview:
@@ -142,7 +146,22 @@ def main() -> int:
                 print(f"\n  {current_member} ({row['member_role']})")
             mark = "= already there" if row["already"] else ("+ would create" if args.dry_run else "+ created")
             area = f"  [{row['area']}]" if row["area"] else ""
-            print(f"      {mark}: {row['title']}{area}")
+            # The resolved cutoff is printed because it is the whole point of a
+            # dry run before seeding cutoffs: a wrong timezone or a wrong
+            # cutoff_time shows up here as a time, not later as chores turning
+            # red at the wrong hour.
+            if row["cutoff_time"] is None:
+                cutoff = "  (no cutoff)"
+            else:
+                # Formatted by hand: strftime's %-I is glibc-only and %#I is
+                # Windows-only, and this script is run from both.
+                t = row["cutoff_time"]
+                cutoff = (
+                    f"  by {t.hour % 12 or 12}:{t.minute:02d} "
+                    f"{'PM' if t.hour >= 12 else 'AM'}"
+                    f"  [{row['cutoff_at']:%Y-%m-%d %H:%M %z}]"
+                )
+            print(f"      {mark}: {row['title']}{area}{cutoff}")
 
         fresh = sum(1 for r in preview if not r["already"])
         print()

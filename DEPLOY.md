@@ -219,7 +219,7 @@ conflicts on id and is skipped, so the old name stays on the wall).
 
 **`sort_order` is the order chores appear on the kiosk.** Leave gaps (10, 20, 30)
 so a new chore can slot between two without renumbering, and put end-of-day
-chores last — alphabetically the 8pm family reset sorts to the *top* of the list,
+chores last — alphabetically the nightly family reset sorts to the *top* of the list,
 above chores due at breakfast. It is read live, so re-ordering takes effect on
 every day at once, past and future; you do not need to re-materialize anything.
 

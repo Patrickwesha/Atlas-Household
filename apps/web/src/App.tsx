@@ -17,7 +17,7 @@ import {
 } from './api'
 import { avatarFor } from './avatar-looks'
 import { Avatar } from './avatars'
-import { dateKey, formatClock, formatDate, resetLabel } from './clock'
+import { RESET_AT, dateKey, formatClock, formatDate, resetLabel } from './clock'
 
 const POLL_MS = 60_000
 // Back to the family screen after a minute of nothing. Deliberately not the
@@ -549,8 +549,8 @@ function FamilyScreen({
           done, so it has no checkbox.
 
           THIS COMMENT USED TO SAY "there is no completion to record". That is no
-          longer true, and the change is not in this file. Since slice 2 the 8pm
-          reset is a real chore_definition assigned to four people every day, so
+          longer true, and the change is not in this file. Since slice 2 the
+          nightly reset is a real chore_definition assigned to four people, so
           it materializes into four completable rows that appear in four people's
           lists — the same event is now on screen twice, in two different
           grammars, and only one of them can be tapped.
@@ -574,7 +574,11 @@ function FamilyScreen({
           </div>
           <div>
             <div className="t">15-minute family reset</div>
-            <div className="s">Everyone, every night at 8:00 PM</div>
+            {/* The time is RESET_AT, never a literal. This copy and the
+                countdown beside it must come from the same constant — a strip
+                that says one time while counting down to another is the wall
+                lying about the thing the whole house looks at. */}
+            <div className="s">Everyone, every night at {RESET_AT}</div>
           </div>
           <div className="cd">{resetLabel(now)}</div>
         </div>

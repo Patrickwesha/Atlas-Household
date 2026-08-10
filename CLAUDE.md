@@ -63,13 +63,13 @@ dependency — see the auth rule below.
 
 - **One definition per real-world chore.** "Kitchen reset" is ONE definition with
   assignment rows splitting it across two adults by weekday — not two
-  definitions. The all-hands 8pm reset is one definition with four members across
+  definitions. The all-hands nightly reset is one definition with four members across
   seven days and needs no special case.
 - **`sort_order` is joined, never snapshotted.** `GET /api/board` joins
   `chore_definitions` and orders by it, `nulls last` so slice-1 rows sink to the
   bottom. Unlike `title`, re-ordering old rows rewrites nothing that was ever
   true about them, so a change takes effect everywhere at once. Alphabetical
-  order put the 8pm family reset at the top of the list.
+  order put the nightly family reset at the top of the list.
 - **`title` IS snapshotted onto the instance.** That is what lets a definition be
   renamed without rewriting what the board said last Tuesday. Anything Phase C
   lets the dashboard edit has to be checked against this.
@@ -111,7 +111,7 @@ already exist from 0002, deliberately unused, for exactly this.
 - Cutoff times are seeded from `seed.json`. The materializer resolves
   `cutoff_at = cutoff_time + due_on` in the household timezone.
 - The kiosk becomes the reminder: past cutoff and still pending, the tile goes
-  amber then red, the header says how many are left tonight, the 8pm strip counts
+  amber then red, the header says how many are left tonight, the reset strip counts
   down in red once passed, and **one soft chime — at most once per instance per
   day, never repeating.** A kiosk that beeps repeatedly gets muted, and a muted
   kiosk is a dead one.
