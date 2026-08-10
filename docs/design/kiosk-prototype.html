@@ -6,6 +6,13 @@
   committed so the design intent has a home in the repo, and so changes to the
   real UI can be diffed against something.
 
+  DATED SNAPSHOT. The times in here are the ones that were current when this
+  mock was drawn and are NOT kept in sync with production. In particular the
+  nightly family reset moved to 9:30 PM (practice runs 6:30-8:30, so an 8pm
+  reset is one nobody can be at) — the shipped app derives that from RESET_AT
+  in apps/web/src/clock.ts, which is the only source of truth for it. Do not
+  diff this file against the app and "fix" the app back.
+
   Two things to know before reading it:
 
   1. NAMES ARE PLACEHOLDERS. The originals were replaced with the same

@@ -3,9 +3,23 @@ seed.py — load the household, members, and recurring chore definitions into Po
 
 Reads seed.json (real family data, gitignored) from this directory and DIRECT_URL
 from the environment / repo .env. Seeds are session-scoped, so it uses the direct
-endpoint and refuses a "-pooler" host, exactly like the migrations. Inserts use
-the fixed UUIDs from seed.json with `on conflict do nothing`, so re-running is a
-no-op.
+endpoint and refuses a "-pooler" host, exactly like the migrations.
+
+THIS IS AN EDIT SURFACE, NOT JUST A SEEDER. Until the parent dashboard exists it
+is the only way to change a chore definition, so a definition's editable fields
+(name, area, cutoff_time, sort_order, is_active) are UPSERTED. They used to be
+`on conflict do nothing`, which meant every rename, re-order and cutoff change
+silently did not happen — the file said one thing and the wall said another.
+
+That is safe because of the snapshot pattern, not in spite of it: instances copy
+`title` at insert and `cutoff_at` at materialization, so editing a definition
+cannot rewrite what the board said last Tuesday.
+
+Households, members, ASSIGNMENTS and legacy `chores_today` remain insert-only.
+Changing who is assigned to what is a different and more dangerous operation.
+
+Every run prints a current-vs-proposed diff of all definitions BEFORE writing
+anything. Read it. `--dry-run` prints the same diff and writes nothing.
 
 SLICE 2: this seeds the RECURRING model — chore_definitions plus the assignment
 rows that say who does what on which weekday. It no longer creates a day's
@@ -17,8 +31,10 @@ instances the slice-1 way, and exists only so an existing seed.json keeps workin
 and `--refresh` still has something to re-date. New setups should leave it out.
 
 Run from apps/api:
-    uv run python seed.py              # strict: on conflict do nothing
-    uv run python seed.py --refresh    # dev opt-in: re-date `chores_today` to today
+    uv run python seed.py --dry-run           # show the diff, write nothing
+    uv run python seed.py                     # apply it
+    uv run python seed.py --backfill-cutoffs  # plus: fill today's null cutoff_at
+    uv run python seed.py --refresh           # dev opt-in: re-date `chores_today`
 """
 
 from __future__ import annotations
@@ -249,8 +265,116 @@ def _guard_against_duplicate_people(
             print(line)
 
 
+# The definition fields seed.py is allowed to CHANGE on an existing row.
+#
+# Deliberately not `id` (that is the identity) and deliberately not the
+# assignments, which stay insert-only — see the upsert in main() for why.
+_EDITABLE = ("name", "area", "cutoff_time", "sort_order", "is_active")
+
+
+def _normalise_time(value: Any) -> str | None:
+    """"HH:MM" for a seed.json string or a psycopg time, None for null.
+
+    Both sides of the diff have to be comparable, and they arrive in different
+    shapes: seed.json gives "22:30", the database gives datetime.time(22, 30).
+    Without this, every run would report every cutoff as changed.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        parts = value.split(":")
+        return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+    return f"{value.hour:02d}:{value.minute:02d}"
+
+
+def _proposed_fields(definition: dict[str, Any]) -> dict[str, Any]:
+    """What seed.json says a definition should be, with defaults applied."""
+    return {
+        "name": definition["name"],
+        "area": definition.get("area"),
+        "cutoff_time": _normalise_time(definition.get("cutoff_time")),
+        "sort_order": definition.get("sort_order", 0),
+        "is_active": definition.get("is_active", True),
+    }
+
+
+def _print_definition_diff(
+    cur: psycopg.Cursor[Any], household_id: str, definitions: list[dict[str, Any]]
+) -> int:
+    """Print current-vs-proposed for every definition. Returns the change count.
+
+    Runs BEFORE any write, every time — not only under --dry-run. seed.py is the
+    only edit surface for definitions until the parent dashboard exists, and an
+    edit surface that changes live rows without showing what it is about to
+    change is one you cannot safely use on a board the family is standing at.
+    """
+    rows = {
+        str(r[0]): dict(zip(("name", "area", "cutoff_time", "sort_order", "is_active"), r[1:]))
+        for r in cur.execute(
+            "select id, name, area, cutoff_time, sort_order, is_active "
+            "from chore_definitions where household_id = %s",
+            (household_id,),
+        ).fetchall()
+    }
+
+    changed = 0
+    print()
+    print("  Definition changes:")
+    for definition in definitions:
+        proposed = _proposed_fields(definition)
+        current = rows.get(definition["id"])
+        if current is None:
+            print(f"    + NEW  {proposed['name']}")
+            for field in _EDITABLE:
+                print(f"           {field:12} -> {proposed[field]!r}")
+            changed += 1
+            continue
+
+        current_norm = {**current, "cutoff_time": _normalise_time(current["cutoff_time"])}
+        diffs = [f for f in _EDITABLE if current_norm[f] != proposed[f]]
+        if not diffs:
+            print(f"    = {proposed['name']}  (no change)")
+            continue
+        changed += 1
+        print(f"    ~ {proposed['name']}")
+        for field in diffs:
+            print(f"           {field:12} {current_norm[field]!r} -> {proposed[field]!r}")
+        same = [f for f in _EDITABLE if f not in diffs]
+        if same:
+            print(f"           unchanged: {', '.join(same)}")
+
+    orphans = set(rows) - {d["id"] for d in definitions}
+    if orphans:
+        print()
+        print("    NOTE: these definitions exist in the database but not in seed.json.")
+        print("    They are LEFT ALONE — seed.py never deletes or deactivates. Set")
+        print("    is_active false in seed.json if you meant to retire one:")
+        for oid in sorted(orphans):
+            print(f"      {rows[oid]['name']}  ({oid})")
+
+    print()
+    print(f"  {changed} definition(s) would change, {len(definitions) - changed} unchanged.")
+    return changed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Seed the Atlas Household database.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show the definition diff and write NOTHING. Use before every real run.",
+    )
+    parser.add_argument(
+        "--backfill-cutoffs",
+        action="store_true",
+        help=(
+            "One-off: set cutoff_at on TODAY's existing instances from their "
+            "definition, but ONLY where cutoff_at is currently null AND the "
+            "resolved cutoff is still in the future. Never touches a past day, "
+            "never overwrites a cutoff already snapshotted, and can never make "
+            "an existing chore retroactively late."
+        ),
+    )
     parser.add_argument(
         "--refresh",
         action="store_true",
@@ -301,6 +425,14 @@ def main() -> int:
                 print(f"ERROR in {SEED_JSON.name}: {exc}", file=sys.stderr)
                 return 1
 
+            # Always, before any write — not only under --dry-run.
+            _print_definition_diff(cur, household["id"], definitions)
+            if args.dry_run:
+                conn.rollback()
+                print()
+                print("DRY RUN — nothing was written.")
+                return 0
+
             cur.execute(
                 "insert into households (id, name) values (%s, %s) on conflict (id) do nothing",
                 (household["id"], household["name"]),
@@ -313,10 +445,37 @@ def main() -> int:
                 )
 
             for definition in definitions:
+                # UPSERT the definition's FIELDS. Until the parent dashboard
+                # exists this is the only way to edit a definition at all, and
+                # `do nothing` meant every rename, re-order and cutoff change
+                # silently did not happen — the worst kind of failure, because
+                # the file said one thing and the wall said another.
+                #
+                # Safe precisely because of the snapshot pattern: chore_instances
+                # copy `title` at insert and `cutoff_at` at materialization, so
+                # editing a definition cannot rewrite what the board said last
+                # Tuesday. That is what the snapshots are FOR.
+                #
+                # `cadence` is not updated: it is descriptive only and the
+                # materializer never reads it, so changing it here would imply a
+                # schedule change that does not happen. The schedule lives in
+                # chore_assignments.
+                #
+                # ASSIGNMENTS STAY `do nothing` (below). Who is assigned to what
+                # is a different and more dangerous operation — an upsert there
+                # would silently move a chore between two kids, and the natural
+                # key means a removed assignment would not disappear anyway, so
+                # it would half-work. Not opened in this change.
                 cur.execute(
                     "insert into chore_definitions "
                     "(id, household_id, name, area, cadence, cutoff_time, sort_order, is_active) "
-                    "values (%s, %s, %s, %s, %s, %s, %s, %s) on conflict (id) do nothing",
+                    "values (%s, %s, %s, %s, %s, %s, %s, %s) "
+                    "on conflict (id) do update set "
+                    "    name        = excluded.name, "
+                    "    area        = excluded.area, "
+                    "    cutoff_time = excluded.cutoff_time, "
+                    "    sort_order  = excluded.sort_order, "
+                    "    is_active   = excluded.is_active",
                     (
                         definition["id"],
                         household["id"],
@@ -359,6 +518,51 @@ def main() -> int:
                     "values (%s, %s, %s, %s, %s) on conflict (id) do nothing",
                     (c["id"], household["id"], member_id_by_key[c["assignee"]], c["title"], today),
                 )
+
+            if args.backfill_cutoffs:
+                # Instances snapshot cutoff_at when they are MATERIALIZED, so a
+                # day created before its definitions had cutoffs keeps cutoff_at
+                # null forever and nothing on it can ever go late. That is
+                # correct behaviour and it looks exactly like a broken feature.
+                #
+                # This fills that gap once, and it is bounded so it cannot
+                # accuse anyone:
+                #   - today only. A past day is history; giving it deadlines it
+                #     never had would turn finished chores retroactively late.
+                #   - cutoff_at is null only. Never overwrites a real snapshot.
+                #   - the resolved cutoff must still be in the FUTURE. A chore
+                #     whose deadline already passed today never had one while
+                #     the day was live, and going red for it now would be the
+                #     board inventing a deadline nobody was told about.
+                backfilled = cur.execute(
+                    "update chore_instances ci "
+                    "   set cutoff_at = (ci.due_on + d.cutoff_time) at time zone %s "
+                    "  from chore_definitions d "
+                    " where d.id = ci.definition_id "
+                    "   and ci.household_id = %s "
+                    "   and ci.due_on = %s "
+                    "   and ci.cutoff_at is null "
+                    "   and d.cutoff_time is not null "
+                    "   and ((ci.due_on + d.cutoff_time) at time zone %s) > now() "
+                    "returning ci.title, ci.cutoff_at",
+                    (str(TZ), household["id"], today, str(TZ)),
+                ).fetchall()
+                print()
+                print(f"  cutoff backfill for {today.isoformat()}: {len(backfilled)} instance(s)")
+                for title, at in sorted(backfilled, key=lambda r: (r[1], r[0])):
+                    print(f"      {at:%H:%M}  {title}")
+                skipped = cur.execute(
+                    "select count(*) from chore_instances ci join chore_definitions d "
+                    " on d.id = ci.definition_id "
+                    " where ci.household_id = %s and ci.due_on = %s and ci.cutoff_at is null "
+                    "   and d.cutoff_time is not null",
+                    (household["id"], today),
+                ).fetchone()
+                if skipped and skipped[0]:
+                    print(
+                        f"      ({skipped[0]} left null — their cutoff already passed "
+                        "today, so they are not made late after the fact)"
+                    )
 
     print(f"  household: 1 | members: {len(members)}")
     print(f"  chore_definitions: {len(definitions)} | chore_assignments: {assignment_rows}")
