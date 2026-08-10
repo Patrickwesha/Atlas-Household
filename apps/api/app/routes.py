@@ -271,7 +271,10 @@ def get_history(
     else:
         if _MONTH_RE.match(month) is None:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                # UNPROCESSABLE_CONTENT, not UNPROCESSABLE_ENTITY: the latter is
+                # deprecated in Starlette 1.3 and emits a warning on every bad
+                # month. Same 422 on the wire.
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="month must be YYYY-MM",
             )
         month_start = date(int(month[:4]), int(month[5:7]), 1)
