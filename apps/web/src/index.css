@@ -40,7 +40,12 @@
    *
    * --cal-track  vs --violet  3.68:1  (how much of the dial is filled)
    * --cal-rim    vs white     4.35:1  (a dial exists here, even at 0%)
-   * --cal-muted  vs white     3.34:1  (dashed "no data" rim, future numbers) */
+   * --cal-muted  vs white     3.34:1  (dashed "no data" rim, future numerals)
+   *
+   * --ring-empty is reused as the FUTURE track at 1.26:1 on white. Faint on
+   * purpose: it is grid rhythm, not data. What tells a future day from a
+   * 0-of-N day is the missing rim and the muted numeral, both of which clear
+   * their own bar. */
   --cal-track: #d8d2ee;
   --cal-rim: #7c72a8;
   --cal-muted: #8f88ad;
@@ -811,15 +816,35 @@ button {
   color: var(--grey);
   font-weight: 700;
 }
-/* Future: no dial, no outline, nothing to read as a score. Distinct from NO
- * DATA by the absence of the dashed edge, not by a shade of the same mark. */
+/* Future: a faint track ring, so the grid keeps its structure to the end of the
+ * month. Dropping it entirely left days 10-31 as bare numerals and the month
+ * read as if it stopped at today.
+ *
+ * It must not collide with "0 of N done", which is also a ring with nothing
+ * filled in. Two independent signals separate them, so either one alone is
+ * enough:
+ *   ring    future has NO rim; 0-of-N carries the full-strength --cal-rim
+ *   numeral future is muted 3.34:1; 0-of-N is --ink at 16.14:1
+ *
+ * CONTRAST: this is NOT the prototype's `opacity:.5` with a #B9B3CE numeral.
+ * That numeral is 2.02:1 on the white sheet — a fail at every size — and the
+ * opacity sits on .r, so it fades the numeral inside along with the ring,
+ * making the one thing you actually have to read the faintest thing in the
+ * cell. Here the track is a light colour outright and the numeral is set
+ * independently, so the ring can be faint without dragging the numeral down
+ * with it. --cal-muted at 3.34:1 is the lightest grey that still clears the
+ * bar; anything nearer the prototype's value fails (#9E97BC is 2.76:1).
+ *
+ * The track itself is 1.26:1 and that is deliberate: it carries no
+ * information. "Which day is this" is the numeral, "is this day tracked" is
+ * the rim and the numeral's weight. The ring is rhythm, not data. */
 .day-future .r {
-  background: none;
-  padding: 0;
+  background: var(--ring-empty);
+  padding: 5px;
   box-shadow: none;
 }
 .day-future .r em {
-  background: none;
+  background: #fff;
   color: var(--cal-muted);
   font-weight: 700;
 }
