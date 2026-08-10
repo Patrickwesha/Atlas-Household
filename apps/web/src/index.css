@@ -49,7 +49,17 @@
   --cal-track: #d8d2ee;
   --cal-rim: #7c72a8;
   --cal-muted: #8f88ad;
-  /* On --gold: 5.16:1. The prototype's #a06e00 measured 2.82:1 on it. */
+  /* Today's progress arc. NOT --gold: bright gold against the same light track
+   * every other day uses is 1.08:1, so the filled/unfilled boundary — the
+   * entire point of an arc — would be invisible. Keeping bright gold would
+   * mean darkening today's track to about #6b6675 (5.55:1 on white), which
+   * makes today the heaviest mark in a grid of light ones. Deepening the arc
+   * instead keeps today's track identical to every other day's, so the grid
+   * stays consistent and today is still unmistakably the gold one.
+   * --cal-today-arc vs --cal-track  3.71:1   (how much of today is done)
+   * --cal-today-arc vs white        5.42:1 */
+  --cal-today-arc: #8f6100;
+  /* On white, where the numeral now sits. 8.15:1. */
   --cal-today-ink: #6b4900;
   /* The gold disc is only 1.58:1 against the white sheet, so it needs an edge
    * of its own or "today" dissolves into the page. 4.44:1 against white. */
@@ -802,9 +812,19 @@ button {
  * The inner `em` therefore keeps the white background it inherits from
  * `.day .r em`. Overriding it to `none` is exactly what turned this into a
  * disc. */
+/* Today FILLS AS THE DAY GOES, and is only a complete ring once every chore is
+ * done. It used to be flat gold whatever the progress, on the reasoning that
+ * grading a day at 9am marks a kid part-done for chores not yet due. That was
+ * wrong: the arc is not a grade, it is the same "here is where you are" the
+ * ring on their own tile already shows them, and today is the one day where
+ * that is worth anything.
+ *
+ * Same track as every other day, so a full ring means the same thing
+ * everywhere. Today is marked by hue and by a 3px rim against everyone else's
+ * 2px — a difference in weight as well as colour. */
 .day-today .r {
-  background: var(--gold);
-  box-shadow: 0 0 0 2px var(--cal-today-rim);
+  background: conic-gradient(var(--cal-today-arc) calc(var(--p) * 1%), var(--cal-track) 0);
+  box-shadow: 0 0 0 3px var(--cal-today-rim);
 }
 /* CONTRAST: the numeral sits on the WHITE centre, not on the gold, so it is
  * measured against white. The prototype's #A06E00 is 4.44:1 there — and the
@@ -901,12 +921,13 @@ button {
 .key-partial {
   background: conic-gradient(var(--violet) 50%, var(--cal-track) 0);
 }
-/* Same fix as .day-today: a gold RING with a white centre, not a disc. A
- * legend swatch that does not match the mark it explains is worse than no
- * legend. */
+/* Part-filled, because that is what today looks like most of the time — a
+ * solid swatch would promise a mark the grid never shows until the last chore
+ * is ticked. Same 3px rim as the real thing. A legend swatch that does not
+ * match the mark it explains is worse than no legend. */
 .key-today {
-  background: var(--gold);
-  box-shadow: 0 0 0 2px var(--cal-today-rim);
+  background: conic-gradient(var(--cal-today-arc) 50%, var(--cal-track) 0);
+  box-shadow: 0 0 0 3px var(--cal-today-rim);
 }
 .key-nodata {
   background: none;

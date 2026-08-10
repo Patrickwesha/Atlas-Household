@@ -91,8 +91,10 @@ built, reviewed and confirmed before the next one starts.
   `docs/design/kiosk-prototype.html`. **Today is the existing task list,
   unchanged and un-restyled.** The dependent gets no tabs and no calendar.
 - Four day states, and the fourth is the one that matters: `complete` (total > 0,
-  completed == total), `partial` (total > 0, completed < total), `today` (gold
-  regardless of progress), and **NO DATA** — no instances exist for that date.
+  completed == total), `partial` (total > 0, completed < total), `today` (gold,
+  and it FILLS as chores are ticked — a complete ring only once every chore is
+  done, fed from the live board so it cannot lag what the Today tab shows), and
+  **NO DATA** — no instances exist for that date.
   NO DATA must be visually distinct from BOTH "future" and "0 of N done", and
   gets its own legend entry. **A day before tracking started must not render as
   an empty ring.** An empty ring means "you did none of your chores"; showing

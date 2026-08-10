@@ -713,6 +713,15 @@ function PersonScreen({
             month={calMonth}
             onMonth={setCalMonth}
             cache={calCache.current}
+            // Today's square is fed from the LIVE board, not from the fetched
+            // month. History is fetched once per month and cached, so the
+            // moment a kid ticks a chore and switches to Calendar the cached
+            // figure is stale and today's arc under-reports the work they just
+            // did. These are the same rows the Today tab is showing, which is
+            // the consistency that matters: the two tabs must not disagree
+            // about the day the kid is standing in.
+            todayTotal={chores.length}
+            todayDone={done}
           />
         ) : chores.length === 0 ? (
           // No confetti. An empty list is almost never "you finished" — a
@@ -802,9 +811,11 @@ function leadingBlanks(month: string): number {
 }
 
 function dayState(iso: string, today: string, entry: HistoryDay | undefined): DayState {
-  // Today is gold whatever the progress. It is the one day still in play, and
-  // grading it at 9am would mark a kid part-done for chores that are not due
-  // yet — then change again under them as the day goes on.
+  // Today keeps its own state — gold, and a 3px rim — but it FILLS like every
+  // other day and is only a complete ring once the last chore is ticked. It is
+  // the one day still in play, which is exactly why the arc is worth drawing:
+  // it is not a grade, it is the same "here is where you are" the ring on the
+  // kid's own tile already shows.
   if (iso === today) return 'today'
   if (iso > today) return 'future'
   if (entry === undefined || entry.total === 0) return 'nodata'
@@ -812,8 +823,12 @@ function dayState(iso: string, today: string, entry: HistoryDay | undefined): Da
 }
 
 function dayLabel(day: number, state: DayState, entry: HistoryDay | undefined): string {
-  if (state === 'today') return `${day}, today`
   if (state === 'future') return `${day}, still to come`
+  if (state === 'today') {
+    return entry === undefined || entry.total === 0
+      ? `${day}, today, nothing on your list`
+      : `${day}, today, ${entry.completed} of ${entry.total} done`
+  }
   if (state === 'nodata' || entry === undefined) return `${day}, nothing was on the board`
   if (state === 'complete') return `${day}, all ${entry.total} done`
   return `${day}, ${entry.completed} of ${entry.total} done`
@@ -824,11 +839,15 @@ function CalendarPanel({
   month,
   onMonth,
   cache,
+  todayTotal,
+  todayDone,
 }: {
   member: Member
   month: string | null
   onMonth: (month: string) => void
   cache: Map<string, History>
+  todayTotal: number
+  todayDone: number
 }) {
   // null means "whichever month the server says it is", so the first request
   // carries no assumption about the date at all.
@@ -899,7 +918,13 @@ function CalendarPanel({
     }
     for (let day = 1; day <= daysInMonth(loaded); day++) {
       const iso = `${loaded}-${String(day).padStart(2, '0')}`
-      const entry = byDate.get(iso)
+      // Today comes from the live board; every other day from the fetched
+      // month. See the call site for why the cached figure cannot be trusted
+      // for the day currently being worked on.
+      const entry =
+        iso === data.today
+          ? { date: iso, total: todayTotal, completed: todayDone }
+          : byDate.get(iso)
       const state = dayState(iso, data.today, entry)
       const pct =
         entry !== undefined && entry.total > 0
