@@ -61,9 +61,27 @@ _INSTANCES_FOR_DAY = (
 )
 
 
-# One row per date that HAS instances. Dates with none are simply absent, and
-# that absence is the "NO DATA" state the calendar draws as a dashed outline —
-# see schemas.HistoryDay for why it must not look like "0 of N done".
+# WHY `definition_id is not null` IS IN BOTH QUERIES BELOW, AND MUST STAY.
+#
+# It is the machine-readable line between "the chore system tracked this day"
+# and "this day predates the chore system". Every instance the materializer
+# creates carries a definition_id; the slice-1 rows seeded from `chores_today`
+# carry NULL, and always will — nothing backfills them, and 0002 added the
+# column nullable precisely so they survived untouched.
+#
+# Without the filter, a day whose only row is a leftover slice-1 chore renders
+# as a FULL DIAL — a flawless day — because 1 of 1 was completed. That is
+# literally true and completely misleading: the system was not running, nobody
+# was asked for anything, and the calendar would be handing out a perfect score
+# for a day it never watched. Dashed is the honest answer, and this is what
+# makes it possible to say so without deleting anything (see CLAUDE.md,
+# "deactivate, never delete").
+#
+# THIS DELIBERATELY MAKES /api/history AND /api/board DISAGREE for any date
+# holding legacy rows. It is not a bug and must not be "fixed" by aligning
+# them: the board answers "what is due today", which includes a legacy row a
+# kid can still tap; history answers "what did this system track", which a
+# legacy row was never part of. Two different questions, two correct answers.
 #
 # count(ci.completed_at) counts NON-NULL values, so it is the completed tally.
 # count(*) is every row. Both scoped by household AND assignee: household_id
@@ -72,6 +90,7 @@ _HISTORY_FOR_MONTH = (
     "select ci.due_on as date, count(*) as total, count(ci.completed_at) as completed "
     "from chore_instances ci "
     "where ci.household_id = %s and ci.assignee_id = %s "
+    "and ci.definition_id is not null "
     "and ci.due_on >= %s and ci.due_on < %s "
     "group by ci.due_on "
     "order by ci.due_on"
@@ -79,9 +98,15 @@ _HISTORY_FOR_MONTH = (
 
 # Where the calendar stops paging back. Everything before this is blank months,
 # and letting someone scroll into them looks like history that got lost.
+#
+# Filtered identically to the query above, and that consistency is the point: a
+# first_date derived from an untracked legacy row would let the calendar page
+# back to a month whose every square is dashed, which reads as lost history
+# rather than as history that never existed.
 _FIRST_INSTANCE_FOR_MEMBER = (
     "select min(ci.due_on) as first_date from chore_instances ci "
-    "where ci.household_id = %s and ci.assignee_id = %s"
+    "where ci.household_id = %s and ci.assignee_id = %s "
+    "and ci.definition_id is not null"
 )
 
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
@@ -234,6 +259,11 @@ def get_history(
     conn: psycopg.Connection[DictRow] = Depends(get_db),
 ) -> History:
     """One member's per-day completion counts for a month. READ ONLY.
+
+    Counts ONLY instances that came from a chore_definition. Slice-1 legacy rows
+    are excluded, so a day that predates the chore system reads as "no data"
+    rather than as a perfect score — see the note above _HISTORY_FOR_MONTH,
+    including why this is meant to disagree with GET /board.
 
     Deliberately NOT like GET /board: this route never materializes anything.
     The board's self-heal exists because an empty wall on a school morning is a
