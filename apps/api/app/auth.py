@@ -1,15 +1,16 @@
 """Authentication dependencies.
 
-There are two, and they never mix. `require_kiosk` is the shared device token on
-the wall iPad. `require_cron` is the nightly materializer's secret, held by
-Vercel and by nothing else.
+There are three, and they never mix. `require_kiosk` is the shared device token
+on the wall iPad. `require_cron` is the nightly materializer's secret, held by
+Vercel and by nothing else. `require_outstanding` is the read-only late-chore
+summary's token, held by an iOS Shortcut on a phone.
 
 Separate dependencies, not one dependency with a branch. Different device,
 different blast radius, different revocation: rotating the kiosk token because a
 kid's friend photographed the iPad must not also break the cron, and a leaked
 cron secret must not be able to read the board. A future `current_adult` (real
-per-user auth) arrives the same way — a third function here, not a third branch
-inside one of these.
+per-user auth) arrives the same way — a fourth function here, not a fourth
+branch inside one of these.
 """
 
 from __future__ import annotations
@@ -81,5 +82,41 @@ def require_cron(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing cron secret",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def require_outstanding(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> None:
+    """Allow the request only if it carries OUTSTANDING_TOKEN as
+    `Authorization: Bearer <token>`. 401 otherwise, compared in constant time on
+    bytes for the reason recorded in require_kiosk.
+
+    ITS OWN TOKEN, AND NEITHER OF THE OTHERS IS WIDENED. This one lives in an
+    iOS Shortcut on a phone — a third place, with a third way to leak. Reusing
+    the kiosk token would mean a shortcut on a lost phone can read the whole
+    board, and reusing the cron secret would give a read-only summary the same
+    credential as the only endpoint that writes. Rotating any one of the three
+    must not break the other two.
+
+    FAILS CLOSED WHEN OUTSTANDING_TOKEN IS UNSET, exactly like require_cron.
+    Unset means deny everyone. The endpoint it guards names who in this house
+    has not done what — that is family data on a public URL, and a missing
+    variable must never be the thing that opens it.
+    """
+    expected = config.OUTSTANDING_TOKEN
+    if expected is None or credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing outstanding token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not secrets.compare_digest(
+        credentials.credentials.encode("utf-8"), expected.encode("utf-8")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing outstanding token",
             headers={"WWW-Authenticate": "Bearer"},
         )

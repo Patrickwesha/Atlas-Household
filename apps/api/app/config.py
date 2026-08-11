@@ -38,6 +38,12 @@ APP_TIMEZONE: str = os.environ.get("APP_TIMEZONE", "America/Chicago")
 # as a red cron run in the dashboard, never as an open write endpoint on a public
 # URL. See app/auth.py.
 CRON_SECRET: str | None = os.environ.get("CRON_SECRET") or None
+# The late-chore summary's own bearer token, held by an iOS Shortcut. NOT
+# _require()d, for the same reason as CRON_SECRET: one missing variable must
+# never take the kiosk down with it. Unset means require_outstanding() denies
+# every request — the endpoint reports who has not done what, so a
+# misconfigured deploy has to fail closed. See app/auth.py.
+OUTSTANDING_TOKEN: str | None = os.environ.get("OUTSTANDING_TOKEN") or None
 ALLOWED_ORIGINS: list[str] = [
     o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()
 ]

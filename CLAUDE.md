@@ -93,6 +93,37 @@ Read-only queries against Neon are fine without asking.
   renamed without rewriting what the board said last Tuesday. Anything Phase C
   lets the dashboard edit has to be checked against this.
 
+## Kiosk display notes — learned the hard way, do not rediscover
+
+**SPECIFICITY: a modifier must match or exceed the specificity of the base
+selector it overrides.** `.strip .cd` is (0,2,0); a single-class `.cd-past` is
+(0,1,0) and loses regardless of source order. This has now silently no-opped
+three times — GAUNTLET-01 finding 25, `.pcard-static .nm` in round 2, and
+`.cd-past` in phase B2. It never errors and never warns; the rule simply does
+nothing, and the feature looks built. **Any new state modifier gets verified by
+computed style, not by reading the file.**
+
+**A KIOSK UNTOUCHED SINCE LOAD CANNOT CHIME ON iOS.** Safari will not let a page
+produce sound until the user has interacted with it, and that permission dies
+with the page — so an iPad that has been sitting on the wall since it loaded is
+silent, no matter what the code does. **No service worker changes this**, and we
+are deliberately not adding one. The AudioContext is unlocked on the first real
+interaction and `armed` reports whether sound is genuinely possible.
+
+The consequence is a hard design constraint, not a caveat: **every late state
+must be fully carried by colour, words and icon.** The chime is a bonus on top
+of a message that is already complete without it. Anything that would only be
+communicated by sound is not communicated.
+
+**Contrast is measured, not eyeballed, and the background decides what is
+possible.** The person tiles sit on the violet gradient, where `--danger` is
+1.27:1 and every colour that clears 3:1 is so pale that amber and red become
+1.31:1 from *each other* — so lateness there escalates by ring WIDTH in white,
+and hue only ever appears inside a pill whose ink is measured against the pill.
+Row tints are similarly worthless alone (1.03:1 against the normal row wash);
+the edge bar and the text carry those. Ratios live in comments beside the
+values in `index.css`.
+
 ## Scope: slice 3 — history, cutoffs, and the parent dashboard
 
 Slice 1 (the kiosk) and slice 2 phase 1 (recurring chores, the materializer, two
