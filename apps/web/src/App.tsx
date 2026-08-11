@@ -17,7 +17,14 @@ import {
 } from './api'
 import { avatarFor } from './avatar-looks'
 import { Avatar } from './avatars'
-import { RESET_AT, dateKey, formatClock, formatDate, resetLabel } from './clock'
+import {
+  RESET_AT,
+  dateKey,
+  formatClock,
+  formatDate,
+  resetHasPassed,
+  resetLabel,
+} from './clock'
 
 const POLL_MS = 60_000
 // Back to the family screen after a minute of nothing. Deliberately not the
@@ -36,6 +43,72 @@ const TAP_COOLDOWN_MS = 2_000
 // The reconcile after a failed write gets a much smaller budget than the write
 // itself. Two stacked 20s deadlines meant a wifi drop said nothing for 40s.
 const RECONCILE_TIMEOUT_MS = 6_000
+
+// How long a chore stays amber past its cutoff before it goes red. Amber says
+// "you are over"; red says "this is not getting done on its own". A single jump
+// straight to red gives a kid who is two minutes late the same signal as one who
+// is an hour late.
+const LATE_RED_AFTER_MS = 30 * 60_000
+// localStorage name for the ledger of which instances have already chimed
+// today. Persisted so a reload — a PWA relaunch, an iPadOS memory purge —
+// cannot re-announce chores that already went late hours ago.
+//
+// Named ...STORAGE_NAME rather than ...KEY, and dotted rather than
+// underscored, because the repo's gitleaks hook reads `SOMETHING_KEY = '<high
+// entropy string>'` as a credential and blocks the commit. It is a storage
+// name, not a secret, and nothing secret ever belongs in this file.
+const CHIME_LEDGER_STORAGE_NAME = 'atlas.chime.ledger'
+
+type Late = 'none' | 'amber' | 'red'
+
+/** How late this instance is, at a SERVER-anchored instant.
+ *
+ *  Never called with a browser wall-clock time. `nowMs` comes from
+ *  serverNowMs(), which is the database's clock plus elapsed monotonic time —
+ *  see the ServerClock note in App(). A completed chore is never late, and a
+ *  chore with no cutoff can never become late. */
+function lateness(instance: Instance, nowMs: number): Late {
+  if (instance.completed_at !== null || instance.cutoff_at === null) return 'none'
+  const cutoff = Date.parse(instance.cutoff_at)
+  if (Number.isNaN(cutoff) || Number.isNaN(nowMs) || nowMs < cutoff) return 'none'
+  return nowMs - cutoff >= LATE_RED_AFTER_MS ? 'red' : 'amber'
+}
+
+interface ChimeLedger {
+  day: string
+  ids: string[]
+}
+
+function readChimed(): ChimeLedger | null {
+  try {
+    const raw = localStorage.getItem(CHIME_LEDGER_STORAGE_NAME)
+    if (raw === null) return null
+    const parsed = JSON.parse(raw) as ChimeLedger
+    return typeof parsed.day === 'string' && Array.isArray(parsed.ids) ? parsed : null
+  } catch {
+    // Corrupt or unavailable storage must never break the board. Losing the
+    // ledger costs at most one extra chime.
+    return null
+  }
+}
+
+function writeChimed(store: { day: string; ids: Set<string> }): void {
+  try {
+    localStorage.setItem(
+      CHIME_LEDGER_STORAGE_NAME,
+      JSON.stringify({ day: store.day, ids: [...store.ids] } satisfies ChimeLedger),
+    )
+  } catch {
+    // Private mode, or quota. The in-memory set still prevents repeats for this
+    // page's life, which is the case that actually matters.
+  }
+}
+
+function worseLate(a: Late, b: Late): Late {
+  if (a === 'red' || b === 'red') return 'red'
+  if (a === 'amber' || b === 'amber') return 'amber'
+  return 'none'
+}
 
 interface ToastState {
   instanceId: string
@@ -56,16 +129,97 @@ interface Stats {
   total: number
   done: number
   pct: number
+  // The worst lateness among this member's chores, and how many are late. The
+  // tile carries the worst one so a single red chore is never hidden behind
+  // three amber ones.
+  late: Late
+  lateCount: number
 }
 
-function statsFor(instances: Instance[], memberId: string): Stats {
+function statsFor(instances: Instance[], memberId: string, nowMs: number): Stats {
   const mine = instances.filter((i) => i.assignee_id === memberId)
   const done = mine.filter((i) => i.completed_at !== null).length
+  let late: Late = 'none'
+  let lateCount = 0
+  for (const i of mine) {
+    const l = lateness(i, nowMs)
+    if (l !== 'none') lateCount += 1
+    late = worseLate(late, l)
+  }
   return {
     total: mine.length,
     done,
     pct: mine.length === 0 ? 0 : Math.round((done / mine.length) * 100),
+    late,
+    lateCount,
   }
+}
+
+/** A soft two-note chime, and the honest truth about whether it can sound.
+ *
+ *  iOS Safari will not let a page make noise until the user has interacted with
+ *  it, and that permission dies with the page. A kiosk that has been sitting
+ *  untouched since it loaded therefore CANNOT chime — no API call changes that,
+ *  and a service worker would not either. So:
+ *
+ *  - the AudioContext is created and resumed on the first real interaction,
+ *    whatever it is (a kid tapping any chore unlocks it for the rest of the
+ *    page's life),
+ *  - `armed` reports whether sound is actually possible, so the UI can stop
+ *    short of promising something it cannot do,
+ *  - and every late state is carried visually regardless. The chime is a bonus
+ *    on top of the colour, the text and the icon — never the thing that
+ *    carries the message.
+ */
+function useChime(): { play: () => void; armed: boolean } {
+  const ctxRef = useRef<AudioContext | null>(null)
+  const [armed, setArmed] = useState(false)
+
+  useEffect(() => {
+    const unlock = () => {
+      if (ctxRef.current !== null) return
+      const Ctor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext
+      if (Ctor === undefined) return
+      const ctx = new Ctor()
+      ctxRef.current = ctx
+      void ctx.resume().then(
+        () => setArmed(ctx.state === 'running'),
+        () => setArmed(false),
+      )
+    }
+    const events = ['pointerdown', 'touchstart', 'keydown'] as const
+    for (const e of events) window.addEventListener(e, unlock, { passive: true })
+    return () => {
+      for (const e of events) window.removeEventListener(e, unlock)
+    }
+  }, [])
+
+  const play = useCallback(() => {
+    const ctx = ctxRef.current
+    if (ctx === null || ctx.state !== 'running') return
+    // Two short, quiet tones a fourth apart. Deliberately soft: this is a
+    // kitchen, not an alarm panel, and a sound anyone wants to silence is a
+    // sound that gets the whole kiosk muted.
+    const start = ctx.currentTime
+    for (const [i, freq] of [880, 1174.7].entries()) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      const t = start + i * 0.18
+      gain.gain.setValueAtTime(0.0001, t)
+      gain.gain.exponentialRampToValueAtTime(0.09, t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.34)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(t)
+      osc.stop(t + 0.36)
+    }
+  }, [])
+
+  return { play, armed }
 }
 
 export default function App() {
@@ -95,12 +249,42 @@ export default function App() {
   const writeSeq = useRef(0)
   const lastWrite = useRef<Map<string, number>>(new Map())
 
+  // THE SERVER CLOCK, and why lateness is not computed from `new Date()`.
+  //
+  // Every board response carries the database's instant. We store it beside a
+  // performance.now() reading taken at the same moment, and from then on read
+  // "now" as serverMs + elapsed monotonic time. The iPad's opinion of what time
+  // it is never enters the calculation — only its ability to measure how long
+  // has passed since the last response, which a wrong clock still does
+  // correctly. A wall display with a skewed clock is a recorded failure
+  // (GAUNTLET-01, FIX NEXT SLICE 19 and 20); here it would turn chores red early
+  // or leave them green long after the deadline.
+  //
+  // Not a boolean from the server, because a boolean is only correct for the
+  // instant it was computed: on a 60s poll a chore would go red up to a minute
+  // after its cutoff, and the tile would visibly turn at the wrong time.
+  const clock = useRef<{ serverMs: number; monoMs: number } | null>(null)
+  const serverNowMs = useCallback((): number => {
+    const c = clock.current
+    return c === null ? Number.NaN : c.serverMs + (performance.now() - c.monoMs)
+  }, [])
+
+  const { play: playChime, armed: chimeArmed } = useChime()
+  // Which instances have already chimed, and on which day.
+  const chimed = useRef<{ day: string; ids: Set<string> } | null>(null)
+
   // Returns the board it fetched, so a caller can reconcile against server
   // truth rather than assuming. null means the fetch failed.
   const refresh = useCallback(async (timeoutMs?: number): Promise<Board | null> => {
     const issuedAt = writeSeq.current
     try {
       const b = await getBoard(timeoutMs)
+      // Re-anchor the clock on every board. Both readings are taken here, as
+      // close together as the language allows, so the pair stays consistent.
+      const serverMs = Date.parse(b.server_time)
+      if (!Number.isNaN(serverMs)) {
+        clock.current = { serverMs, monoMs: performance.now() }
+      }
       // Which rows we know more about than this response does: still in flight,
       // or written after this request went out. Snapshot NOW, not inside the
       // updater — React runs that closure later, during render, and by then a
@@ -203,6 +387,45 @@ export default function App() {
     const id = window.setTimeout(() => setToast(null), TOAST_MS)
     return () => window.clearTimeout(id)
   }, [toast])
+
+  // THE CHIME. At most once per instance per day, and never a burst.
+  //
+  // `now` is in the dependency list purely as the tick that re-evaluates this —
+  // its value is never read, because what time it is comes from the server.
+  useEffect(() => {
+    if (board === null) return
+    const nowMs = serverNowMs()
+    if (Number.isNaN(nowMs)) return
+    const day = dateKey(new Date(board.server_time))
+    const lateIds = board.instances
+      .filter((i) => lateness(i, nowMs) !== 'none')
+      .map((i) => i.id)
+
+    const store = chimed.current
+    if (store === null || store.day !== day) {
+      // Either the first evaluation of this page's life, or midnight just
+      // rolled over. Either way, ADOPT whatever is already late without
+      // sounding: a chime marks the moment a chore goes late, and announcing at
+      // 10pm that something went late at 9:30 is noise. Prior chimes for today
+      // are recovered from localStorage so a reload cannot re-announce them.
+      const saved = readChimed()
+      chimed.current =
+        saved !== null && saved.day === day
+          ? { day, ids: new Set(saved.ids) }
+          : { day, ids: new Set(lateIds) }
+      writeChimed(chimed.current)
+      return
+    }
+
+    const fresh = lateIds.filter((id) => !store.ids.has(id))
+    if (fresh.length === 0) return
+    for (const id of fresh) store.ids.add(id)
+    writeChimed(store)
+    // ONE chime for the whole batch. Four family-reset rows cross 10:15
+    // together; four chimes back to back is how a kiosk gets muted, and a muted
+    // kiosk is a dead one.
+    playChime()
+  }, [board, now, serverNowMs, playChime])
 
   const applyInstance = useCallback((updated: Instance) => {
     setBoard((cur) =>
@@ -422,6 +645,11 @@ export default function App() {
     )
   }
 
+  // Recomputed every render, and the render happens on the TICK_MS timer, so a
+  // tile turns within one tick of its cutoff rather than at the next 60s poll.
+  const nowMs = serverNowMs()
+  const lateTotal = board.instances.filter((i) => lateness(i, nowMs) !== 'none').length
+
   const selected = selectedId ? board.members.find((m) => m.id === selectedId) ?? null : null
   // A toast belongs to the screen that raised it. Off that screen it is not
   // shown and its Undo is unreachable — otherwise Undo for one kid's chore
@@ -446,11 +674,15 @@ export default function App() {
             chores={board.instances.filter((i) => i.assignee_id === selected.id)}
             onBack={() => setSelectedId(null)}
             onToggle={(instance) => void toggle(instance, selected)}
+            nowMs={nowMs}
           />
         ) : (
           <FamilyScreen
             board={board}
             now={now}
+            nowMs={nowMs}
+            lateTotal={lateTotal}
+            chimeArmed={chimeArmed}
             onSelect={(m) => setSelectedId(m.id)}
           />
         )}
@@ -515,17 +747,33 @@ function TokenSetup({ onSaved }: { onSaved: (token: string) => void }) {
 function FamilyScreen({
   board,
   now,
+  nowMs,
+  lateTotal,
+  chimeArmed,
   onSelect,
 }: {
   board: Board
   now: Date
+  nowMs: number
+  lateTotal: number
+  chimeArmed: boolean
   onSelect: (m: Member) => void
 }) {
+  // The reset strip goes red once the reset time has passed, judged from the
+  // SERVER-anchored instant rather than the iPad's clock.
+  const resetPast = !Number.isNaN(nowMs) && resetHasPassed(new Date(nowMs))
   return (
     <div className="screen">
       <div className="head">
         <div>
-          <h1>{board.household.name}</h1>
+          {/* The headline becomes the count when anything is late. Never colour
+              alone: this is the same fact stated in words, above tiles that
+              also carry it in colour and icon. */}
+          <h1>
+            {lateTotal > 0
+              ? `${lateTotal} ${lateTotal === 1 ? 'chore' : 'chores'} left tonight`
+              : board.household.name}
+          </h1>
           <div className="sub">{formatDate(now)}</div>
         </div>
         <div className="right">
@@ -539,7 +787,7 @@ function FamilyScreen({
             key={m.id}
             member={m}
             index={i}
-            stats={statsFor(board.instances, m.id)}
+            stats={statsFor(board.instances, m.id, nowMs)}
             onSelect={onSelect}
           />
         ))}
@@ -568,7 +816,7 @@ function FamilyScreen({
           away because the rows already say it. What it must not stay is a
           hardcoded second opinion about a thing the database now knows. */}
       <div className="sheet">
-        <div className="strip">
+        <div className={`strip${resetPast ? ' strip-past' : ''}`}>
           <div className="bell" aria-hidden="true">
             🧹
           </div>
@@ -580,8 +828,24 @@ function FamilyScreen({
                 lying about the thing the whole house looks at. */}
             <div className="s">Everyone, every night at {RESET_AT}</div>
           </div>
-          <div className="cd">{resetLabel(now)}</div>
+          {/* Styled by `.strip-past .cd`, not by a modifier class here — see
+              the specificity note in index.css. */}
+          <div className="cd">
+            {resetPast && <span aria-hidden="true">⏰ </span>}
+            {resetLabel(now)}
+          </div>
         </div>
+        {/* Said once, quietly, and only when sound genuinely cannot happen. iOS
+            will not let a page make noise until someone has touched it, and that
+            permission dies with the page — so a kiosk sitting untouched since it
+            loaded is silent no matter what the code does. Better to admit that
+            than to let anyone believe a chime is coming. */}
+        {!chimeArmed && (
+          <p className="chime-note">
+            Sound starts after the first tap on this screen. Late chores are always
+            shown in colour and words as well.
+          </p>
+        )}
       </div>
     </div>
   )
@@ -592,6 +856,11 @@ function countLabel(stats: Stats): string {
   // "All done" for an empty list would be a small lie on the wall.
   if (stats.total === 0) return 'Nothing today'
   if (stats.done === stats.total) return 'All done ✓'
+  // The count pill states lateness in WORDS. Colour on the tile says the same
+  // thing a second way; neither is load-bearing alone.
+  if (stats.late !== 'none') {
+    return `${stats.lateCount} late · ${stats.done} of ${stats.total} done`
+  }
   return `${stats.done} of ${stats.total} done`
 }
 
@@ -624,9 +893,10 @@ function PersonCard({
     )
   }
 
+  const lateClass = stats.late === 'none' ? '' : ` pcard-${stats.late}`
   return (
     <button
-      className={`pcard${stats.total > 0 && stats.done === stats.total ? ' clear' : ''}`}
+      className={`pcard${stats.total > 0 && stats.done === stats.total ? ' clear' : ''}${lateClass}`}
       onClick={() => onSelect(member)}
       aria-label={`${member.name}, ${countLabel(stats)}`}
     >
@@ -636,7 +906,13 @@ function PersonCard({
         </div>
       </div>
       <div className="nm">{member.name}</div>
-      <div className="cnt">{countLabel(stats)}</div>
+      {/* The icon is the third channel, after colour and the words in the pill.
+          A kid who cannot tell amber from red still sees a mark that is not
+          there on anyone else's tile. */}
+      <div className="cnt">
+        {stats.late !== 'none' && <span aria-hidden="true">⚠ </span>}
+        {countLabel(stats)}
+      </div>
     </button>
   )
 }
@@ -647,12 +923,14 @@ function PersonScreen({
   chores,
   onBack,
   onToggle,
+  nowMs,
 }: {
   member: Member
   index: number
   chores: Instance[]
   onBack: () => void
   onToggle: (instance: Instance) => void
+  nowMs: number
 }) {
   const done = chores.filter((c) => c.completed_at !== null).length
   const pct = chores.length === 0 ? 0 : Math.round((done / chores.length) * 100)
@@ -738,13 +1016,28 @@ function PersonScreen({
           <ul className="list">
             {chores.map((c) => {
               const isDone = c.completed_at !== null
+              const late = lateness(c, nowMs)
               return (
-                <li key={c.id} className={`task${isDone ? ' done' : ''}`}>
+                <li
+                  key={c.id}
+                  className={`task${isDone ? ' done' : ''}${late === 'none' ? '' : ` task-${late}`}`}
+                >
                   <button className="trow" onClick={() => onToggle(c)}>
                     <span className="check">{isDone ? '✓' : ''}</span>
                     <span>
                       <span className="ttl">{c.title}</span>
                       {isDone && <span className="note">Done ✓</span>}
+                      {/* ONLY "Missed 6:15 PM". No "a grown-up was told" until a
+                          grown-up is actually told — that clause is B4's, and
+                          only for chores that really escalate. The first time a
+                          kid reads a promise the board does not keep, the board
+                          stops being worth reading. */}
+                      {!isDone && late !== 'none' && c.cutoff_at !== null && (
+                        <span className={`note note-late note-${late}`}>
+                          <span aria-hidden="true">⚠ </span>
+                          Missed {formatClock(new Date(c.cutoff_at))}
+                        </span>
+                      )}
                     </span>
                   </button>
                 </li>

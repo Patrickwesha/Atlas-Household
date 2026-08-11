@@ -53,7 +53,8 @@ log = logging.getLogger(__name__)
 # queries, which on a 60-second poll means rows swapping places under a finger.
 # That failure mode cost three rounds of the gauntlet.
 _INSTANCES_FOR_DAY = (
-    "select ci.id, ci.assignee_id, ci.title, ci.due_on, ci.completed_at, ci.completed_by "
+    "select ci.id, ci.assignee_id, ci.title, ci.due_on, ci.completed_at, ci.completed_by, "
+    "       ci.cutoff_at "
     "from chore_instances ci "
     "left join chore_definitions d on d.id = ci.definition_id "
     "where ci.household_id = %s and ci.due_on = %s "
@@ -191,10 +192,17 @@ def get_board(conn: psycopg.Connection[DictRow] = Depends(get_db)) -> Board:
         instances = conn.execute(
             _INSTANCES_FOR_DAY, (config.HOUSEHOLD_ID, today)
         ).fetchall()
+    # Read AFTER the self-heal, so the instant returned is never older than the
+    # rows returned with it. Taken from the DATABASE rather than this process:
+    # it is the same clock that resolved every cutoff_at, so lateness is decided
+    # against one clock end to end rather than two that can drift apart.
+    server_time = conn.execute("select now() as t").fetchone()
+    assert server_time is not None  # `select now()` always returns a row
     return Board(
         household=Household(**household),
         members=[Member(**m) for m in members],
         instances=[Instance(**i) for i in instances],
+        server_time=server_time["t"],
     )
 
 
@@ -224,7 +232,7 @@ def complete_instance(
         "set completed_at = coalesce(completed_at, now()), "
         "    completed_by = coalesce(completed_by, %s) "
         "where id = %s and household_id = %s "
-        "returning id, assignee_id, title, due_on, completed_at, completed_by",
+        "returning id, assignee_id, title, due_on, completed_at, completed_by, cutoff_at",
         (body.completed_by, instance_id, config.HOUSEHOLD_ID),
     ).fetchone()
     if row is None:
@@ -242,7 +250,7 @@ def uncomplete_instance(
     row = conn.execute(
         "update chore_instances set completed_at = null, completed_by = null "
         "where id = %s and household_id = %s "
-        "returning id, assignee_id, title, due_on, completed_at, completed_by",
+        "returning id, assignee_id, title, due_on, completed_at, completed_by, cutoff_at",
         (instance_id, config.HOUSEHOLD_ID),
     ).fetchone()
     if row is None:

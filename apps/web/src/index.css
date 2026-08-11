@@ -663,6 +663,118 @@ button {
   visibility: hidden;
 }
 
+/* ---------- late states (phase B) ----------
+ *
+ * COLOUR IS NEVER THE ONLY CHANNEL. Every late state below is paired with words
+ * ("Missed 6:15 PM", "2 late · 1 of 4 done", "2 chores left tonight") and with a
+ * ⚠ glyph that appears on no other row. Under deuteranopia amber and red are
+ * close; the text and the icon are what a kid actually reads.
+ *
+ * Measured, on the wash each sits on:
+ *   --amber-ink #8a4b00 on #fff6e8   6.35:1   text
+ *   --danger    #b3123c on #fdecef   6.00:1   text
+ *   --amber-bar #c47a00 on #fff6e8   3.20:1   graphic
+ *   --danger    #b3123c on #fdecef   6.00:1   graphic
+ *
+ * THE BAR IS NOT DECORATION, which is why it is measured as a graphic. The row
+ * TINT is worthless on its own: #fff6e8 and #fdecef are both 1.03:1 against the
+ * normal row wash — invisible, exactly like the done-row tint the gauntlet
+ * flagged at 1.01:1 (FIX NEXT SLICE 30). So the visual weight is carried by the
+ * 4px edge bar and the text, and the tint is only there to keep them company.
+ *
+ * --amber-bar is NOT --amber. The obvious bright amber (#f0a02a) measures
+ * 2.01:1 against its own wash and fails; it survives only as the count-pill
+ * FILL, where the ink on top of it is what has to be readable. */
+:root {
+  --amber: #f0a02a;
+  --amber-bar: #c47a00;
+  --amber-ink: #8a4b00;
+  --amber-wash: #fff6e8;
+  --danger-wash: #fdecef;
+}
+
+.task-amber {
+  background: var(--amber-wash);
+  box-shadow: inset 4px 0 0 var(--amber-bar);
+}
+.task-red {
+  background: var(--danger-wash);
+  box-shadow: inset 4px 0 0 var(--danger);
+}
+.note-late {
+  font-weight: 800;
+}
+.note-amber {
+  color: var(--amber-ink);
+}
+.note-red {
+  color: var(--danger);
+}
+
+/* THE TILE SITS ON THE VIOLET GRADIENT, NOT ON WHITE, AND THAT CHANGES WHAT IS
+ * POSSIBLE. Measured against both ends of the gradient (#6a4cf0 and the lighter
+ * #b44ce8, which is the worst case):
+ *
+ *   --danger  #b3123c   1.27:1   a red edge is very nearly INVISIBLE there
+ *   --amber   #f0a02a   1.90:1
+ *   --gold    #ffc53d   2.59:1   (and it is already the progress ring)
+ *   pale pink #ffd7de   3.12:1
+ *   pale amber#ffe08a   3.17:1
+ *   white     #ffffff   4.09:1
+ *
+ * Only near-white clears 3:1 — and pale amber against pale pink is 1.31:1, so
+ * the two would be indistinguishable FROM EACH OTHER. The tile edge therefore
+ * cannot carry amber-versus-red by colour on this background. Trying anyway is
+ * how the gauntlet ended up with tile borders at 1.67:1 (FIX NEXT SLICE 31).
+ *
+ * So the edge carries ONE bit — "something here is late" — in white, at 4.09:1,
+ * and escalates by WIDTH, which no background can wash out. Which state it is
+ * comes from the count pill: its fill changes, and the words change with it.
+ * The pill's ink is measured against the pill, not against the gradient, so it
+ * is readable regardless. */
+.pcard-amber {
+  background: rgba(255, 246, 232, 0.22);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 0 2px #fff;
+}
+.pcard-red {
+  background: rgba(253, 236, 239, 0.22);
+  border-color: #fff;
+  box-shadow: 0 0 0 5px #fff;
+}
+/* 6.90:1 */
+.pcard-amber .cnt {
+  background: var(--amber);
+  color: #3d2100;
+}
+/* 6.84:1 */
+.pcard-red .cnt {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* The reset strip, once its time has passed.
+ *
+ * `.strip-past .cd`, NOT `.cd-past`. The base rule is `.strip .cd` — two
+ * classes — so a single-class `.cd-past` loses the specificity tie no matter
+ * where it sits in the file, and silently does nothing. That exact trap already
+ * cost this project a fix that never applied (GAUNTLET-01 round 2, finding 25:
+ * `.pcard-static .nm` against `.pcard .nm`). Matching the base rule's shape is
+ * what makes it win. */
+.strip-past .bell {
+  background: var(--danger-wash);
+}
+.strip-past .cd {
+  background: var(--danger);
+  color: #fff;
+}
+.chime-note {
+  margin: 12px 0 0;
+  font-size: clamp(12px, 1.15vw, 15px);
+  font-weight: 700;
+  color: var(--grey);
+}
+
 /* ---------- Today / Calendar tabs ---------- */
 
 .tabs {

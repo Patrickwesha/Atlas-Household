@@ -97,6 +97,18 @@ function minutesSinceMidnight(now: Date): number {
   return (hour % 24) * 60 + minute
 }
 
+/** Minutes since midnight that the reset happens, in APP_TIMEZONE. Exported so
+ *  the strip can go red once it is past without re-deriving the time. */
+export const RESET_MINUTES = RESET_HOUR * 60 + RESET_MINUTE
+
+/** Has the nightly reset time already passed, for the wall-clock instant given?
+ *
+ *  Takes an explicit Date so the caller can pass a SERVER-anchored instant. The
+ *  strip must not go red off the iPad's own clock. */
+export function resetHasPassed(now: Date): boolean {
+  return minutesSinceMidnight(now) >= RESET_MINUTES
+}
+
 /** Schedule text for the nightly reset strip: "in 3h 12m" / "Starting now" /
  *  "Tomorrow 9:30 PM". Describes the schedule only — never whether it was done. */
 export function resetLabel(now: Date): string {

@@ -29,12 +29,26 @@ class Instance(BaseModel):
     due_on: date
     completed_at: datetime | None
     completed_by: UUID | None
+    # Snapshotted at materialization from the definition's cutoff_time, resolved
+    # in the household timezone. null means this chore has no deadline — never
+    # "already late".
+    cutoff_at: datetime | None
 
 
 class Board(BaseModel):
     household: Household
     members: list[Member]
     instances: list[Instance]
+    # The DATABASE's clock at the moment this board was built — the same clock
+    # that resolved every cutoff_at above.
+    #
+    # Sent because the kiosk must not decide what is late from its own clock. A
+    # wall iPad with a skewed clock is a recorded failure (GAUNTLET-01, FIX NEXT
+    # SLICE 19 and 20), and here it would turn chores red early or leave them
+    # green long after the deadline. The client anchors on this instant and then
+    # only measures ELAPSED time from it, which is the one thing a wrong clock
+    # still does correctly.
+    server_time: datetime
 
 
 class CompleteRequest(BaseModel):

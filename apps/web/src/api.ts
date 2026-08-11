@@ -25,12 +25,17 @@ export interface Instance {
   due_on: string
   completed_at: string | null
   completed_by: string | null
+  // Snapshotted at materialization. null means no deadline — never "late".
+  cutoff_at: string | null
 }
 
 export interface Board {
   household: Household
   members: Member[]
   instances: Instance[]
+  // The database's clock when this board was built. Lateness is anchored on
+  // this, never on the iPad's clock — see lateness() in App.tsx.
+  server_time: string
 }
 
 // One date that HAS instances. A date MISSING from History.days has none at
