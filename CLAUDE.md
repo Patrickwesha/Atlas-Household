@@ -20,6 +20,25 @@ The kiosk authenticates with one device token sent as
 by a FastAPI dependency called `require_kiosk`. It is no longer the only
 dependency — see the auth rule below.
 
+## How I want you to work
+
+**RUN COMMANDS YOURSELF.** You have full access to this directory. Don't hand me
+a command block and wait — run it, read the output, and tell me what it said.
+That includes tests, verification scripts, builds, typechecks, linters,
+dry-runs, `git status`, log reads, and starting or stopping servers. If a
+command fails, debug it; don't hand me the error to run again.
+
+I should only be typing a command when it needs something you don't have: a
+browser session on my account, a password, or a device only I can touch.
+
+**The exceptions — still stop and ask before:**
+
+- anything that **WRITES to Neon** (migrations, seeds, backfills, `UPDATE`s)
+- `git push`, merge to `main`, or anything that triggers a deploy
+- installing a new dependency
+
+Read-only queries against Neon are fine without asking.
+
 ## Rules (read before writing code)
 
 - **Never expose secrets to the client.** Only `VITE_API_BASE_URL` may be a

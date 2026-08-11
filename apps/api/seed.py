@@ -544,13 +544,19 @@ def main() -> int:
                     "   and ci.cutoff_at is null "
                     "   and d.cutoff_time is not null "
                     "   and ((ci.due_on + d.cutoff_time) at time zone %s) > now() "
-                    "returning ci.title, ci.cutoff_at",
-                    (str(TZ), household["id"], today, str(TZ)),
+                    # Rendered back in the HOUSEHOLD's zone, not the session's.
+                    # cutoff_at is a timestamptz and psycopg prints it in the
+                    # connection timezone, which is UTC — so a 9:30 PM cutoff
+                    # reported itself as "02:30" and read like a bug in the
+                    # conversion it was there to confirm.
+                    "returning ci.title, "
+                    "  to_char(ci.cutoff_at at time zone %s, 'HH24:MI') as local_hm",
+                    (str(TZ), household["id"], today, str(TZ), str(TZ)),
                 ).fetchall()
                 print()
                 print(f"  cutoff backfill for {today.isoformat()}: {len(backfilled)} instance(s)")
-                for title, at in sorted(backfilled, key=lambda r: (r[1], r[0])):
-                    print(f"      {at:%H:%M}  {title}")
+                for title, local_hm in sorted(backfilled, key=lambda r: (r[1], r[0])):
+                    print(f"      {local_hm}  {title}")
                 skipped = cur.execute(
                     "select count(*) from chore_instances ci join chore_definitions d "
                     " on d.id = ci.definition_id "
