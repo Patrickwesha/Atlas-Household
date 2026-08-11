@@ -17,6 +17,7 @@ import {
 } from './api'
 import { avatarFor } from './avatar-looks'
 import { Avatar } from './avatars'
+import { notifyLate, notifyState, requestNotify, type NotifyState } from './notify'
 import {
   RESET_AT,
   dateKey,
@@ -270,6 +271,8 @@ export default function App() {
   }, [])
 
   const { play: playChime, armed: chimeArmed } = useChime()
+  // Read once at mount, never requested here — only the button requests.
+  const [notify, setNotify] = useState<NotifyState>(() => notifyState())
   // Which instances have already chimed, and on which day.
   const chimed = useRef<{ day: string; ids: Set<string> } | null>(null)
 
@@ -425,6 +428,14 @@ export default function App() {
     // together; four chimes back to back is how a kiosk gets muted, and a muted
     // kiosk is a dead one.
     playChime()
+    // The SAME ledger drives the desktop notification, so a chore can never
+    // both chime and notify twice, and a reload cannot re-announce lateness
+    // from hours ago. One notification per batch, for the same reason.
+    notifyLate(
+      fresh
+        .map((id) => board.instances.find((i) => i.id === id)?.title)
+        .filter((t): t is string => t !== undefined),
+    )
   }, [board, now, serverNowMs, playChime])
 
   const applyInstance = useCallback((updated: Instance) => {
@@ -683,6 +694,8 @@ export default function App() {
             nowMs={nowMs}
             lateTotal={lateTotal}
             chimeArmed={chimeArmed}
+            notify={notify}
+            setNotify={setNotify}
             onSelect={(m) => setSelectedId(m.id)}
           />
         )}
@@ -750,6 +763,8 @@ function FamilyScreen({
   nowMs,
   lateTotal,
   chimeArmed,
+  notify,
+  setNotify,
   onSelect,
 }: {
   board: Board
@@ -757,6 +772,8 @@ function FamilyScreen({
   nowMs: number
   lateTotal: number
   chimeArmed: boolean
+  notify: NotifyState
+  setNotify: (s: NotifyState) => void
   onSelect: (m: Member) => void
 }) {
   // The reset strip goes red once the reset time has passed, judged from the
@@ -844,6 +861,27 @@ function FamilyScreen({
           <p className="chime-note">
             Sound starts after the first tap on this screen. Late chores are always
             shown in colour and words as well.
+          </p>
+        )}
+        {/* Permission is requested from THIS TAP and from nothing else. Never on
+            page load: browsers reject a prompt without a gesture, and a wall
+            display that asks every morning gets permanently denied. The button
+            is absent entirely where notifications cannot work — which includes
+            the wall iPad, since we add no service worker. */}
+        {notify === 'default' && (
+          <button
+            className="notify-btn"
+            onClick={() => {
+              void requestNotify().then(setNotify)
+            }}
+          >
+            Turn on desktop alerts for late chores
+          </button>
+        )}
+        {notify === 'denied' && (
+          <p className="chime-note">
+            Desktop alerts are blocked in this browser's settings. The board still
+            shows late chores in colour and words.
           </p>
         )}
       </div>
@@ -1032,10 +1070,24 @@ function PersonScreen({
                           only for chores that really escalate. The first time a
                           kid reads a promise the board does not keep, the board
                           stops being worth reading. */}
+                      {/* The clause is only ever attached where cutoff_at is
+                          non-null, because that is exactly the set of chores
+                          /api/outstanding can report. A chore with no cutoff
+                          never reaches that list, so claiming otherwise would
+                          be the promise B2 refused to print.
+
+                          And the words are what the app can GUARANTEE. "a
+                          grown-up was told" depends on an iOS Shortcut that
+                          lives on a phone and is not yet proven to run
+                          unattended; the board cannot know whether a message
+                          was ever delivered. It CAN know the chore is on the
+                          list, because the endpoint returns it the moment it
+                          goes late. */}
                       {!isDone && late !== 'none' && c.cutoff_at !== null && (
                         <span className={`note note-late note-${late}`}>
                           <span aria-hidden="true">⚠ </span>
-                          Missed {formatClock(new Date(c.cutoff_at))}
+                          Missed {formatClock(new Date(c.cutoff_at))} · on the
+                          grown-ups&rsquo; list
                         </span>
                       )}
                     </span>
