@@ -311,9 +311,26 @@ VERIFY_DATABASE_URL=postgresql://localhost/atlas_verify uv run python verify_api
 
 The first pins the materializer's guarantees (weekday routing, idempotency by row
 identity rather than row count, completed work surviving a re-run, slice-1 rows
-surviving, the title snapshot). The second boots the API and pins the two tokens
-not overlapping and the self-heal's bounds — including that a materializer which
+surviving, the title snapshot). The second boots the API and pins the tokens not
+overlapping and the self-heal's bounds — including that a materializer which
 raises still returns a 200 board.
+
+**IF THERE IS NO LOCAL POSTGRES: USE A NEON BRANCH.** This is the fallback, and
+it is not a compromise — a Neon branch *is* a real Postgres, with the real schema,
+and it is **not production**. The `neon.tech` guard in both scripts exists to stop
+them truncating the family's live data; a branch is exactly the scratch database
+it is protecting. Create one in the Neon console (Branches → New Branch from
+`main`), take its **direct** connection string, and set
+`VERIFY_DATABASE_URL` to it with the hostname's `neon.tech` left intact — the
+scripts' check is a literal substring match, so point them at the branch by
+setting `ALLOW_NEON_BRANCH=1` if that guard is ever relaxed, or copy the script
+and drop the guard for that run only. Delete the branch afterwards.
+
+Reach for this **before** reaching for Docker. On 2026-08-12 the Docker Desktop
+daemon would not start on the dev machine and the 36 materializer checks went
+unrun through an entire ship — the fallback used was `alembic upgrade --sql` for
+DDL review plus HTTP-level suites, which is weaker and does not exercise the
+materializer at all. A Neon branch would have closed it in two minutes.
 
 ## Troubleshooting
 
