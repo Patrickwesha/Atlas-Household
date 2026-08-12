@@ -3,8 +3,10 @@ name = "atlas-api"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "argon2-cffi>=25.1.0",
     "fastapi>=0.141.1",
     "psycopg[binary]>=3.3.4",
+    "pyjwt>=2.13.0",
     "tzdata>=2026.3",
     "uvicorn[standard]>=0.52.1",
 ]

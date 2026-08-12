@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Household(BaseModel):
@@ -61,6 +61,76 @@ class MaterializeResult(BaseModel):
 
     due_on: date
     created: int
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    expires_at: datetime
+    member_id: UUID
+    member_name: str
+
+
+class AssignmentSpec(BaseModel):
+    """One row of chore_assignments: who, which weekday, which alternating week.
+
+    week_parity null means every week. The natural key is
+    (definition, member, day_of_week) — parity is deliberately NOT part of it
+    (see migration 0003), so the same member cannot hold two rows for one day.
+    """
+
+    member_id: UUID
+    day_of_week: int = Field(ge=0, le=6)
+    week_parity: int | None = Field(default=None, ge=0, le=1)
+
+
+class DefinitionWrite(BaseModel):
+    """Everything the dashboard may change about a definition.
+
+    `cadence` is absent on purpose: it is descriptive only, the materializer
+    never reads it, and exposing it would imply a schedule change that does not
+    happen. The schedule is the assignments.
+    """
+
+    name: str = Field(min_length=1, max_length=200)
+    area: str | None = Field(default=None, max_length=200)
+    cutoff_time: str | None = None  # "HH:MM", or null for no deadline
+    sort_order: int = 0
+    is_active: bool = True
+    assignments: list[AssignmentSpec]
+
+
+class AdminDefinition(BaseModel):
+    id: UUID
+    name: str
+    area: str | None
+    cadence: str
+    cutoff_time: str | None
+    sort_order: int
+    is_active: bool
+    assignments: list[AssignmentSpec]
+
+
+class PreviewRow(BaseModel):
+    member_name: str
+    title: str
+
+
+class PreviewResult(BaseModel):
+    """What saving this definition would do to TOMORROW, and only tomorrow.
+
+    Today is deliberately not shown: today's instances already exist, and this
+    change cannot alter them — cutoff_at and title are snapshotted at
+    materialization. Showing today would imply otherwise.
+    """
+
+    due_on: date
+    appear: list[PreviewRow]
+    disappear: list[PreviewRow]
 
 
 class HistoryDay(BaseModel):

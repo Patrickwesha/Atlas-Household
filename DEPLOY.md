@@ -360,6 +360,16 @@ never be committed; copy their values from your local `.env`.
 | `APP_TIMEZONE` | `America/Chicago` | Part A |
 | `ALLOWED_ORIGINS` | `https://atlas-web-henna.vercel.app` (exact origin, no trailing slash) | **Part C**, after the web deploys |
 | `CRON_SECRET` | *(secret)* `openssl rand -hex 32` — a **different** value from `DEVICE_TOKEN` | **Part F**, before the first cron fires |
+| `OUTSTANDING_TOKEN` | *(secret)* `openssl rand -hex 32` — different again | **slice 3**, before the iOS Shortcut runs |
+| `SESSION_SECRET` | *(secret)* `openssl rand -hex 32` — different again | **slice 3**, before anyone signs in to the dashboard |
+
+> **Only the first three in this table are required.** `DATABASE_URL`,
+> `DEVICE_TOKEN` and `HOUSEHOLD_ID` are `_require()`d and the API will not boot
+> without them. Every secret added after them — `CRON_SECRET`,
+> `OUTSTANDING_TOKEN`, `SESSION_SECRET` — is optional and **fails closed**:
+> unset means the surface it guards 401s everyone, and the kiosk never notices.
+> That asymmetry is deliberate, so a forgotten variable can never darken the
+> wall. Do not "tidy" any of them into `_require()`.
 
 > `CRON_SECRET` is deliberately not the device token. Different device, different
 > blast radius: rotating the iPad's token must not break the nightly job, and a

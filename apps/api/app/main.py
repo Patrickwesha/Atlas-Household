@@ -16,6 +16,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
+from .admin import protected as admin_router
+from .admin import public as admin_public_router
 from .cron import router as cron_router
 from .outstanding import router as outstanding_router
 from .routes import router
@@ -43,3 +45,9 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(cron_router)
 app.include_router(outstanding_router)
+# Login carries no dependency — it is how a session is obtained. Every other
+# dashboard route is on the guarded router. Two routers rather than one with an
+# exemption, so no future admin route can be added to the unguarded one by
+# accident.
+app.include_router(admin_public_router)
+app.include_router(admin_router)

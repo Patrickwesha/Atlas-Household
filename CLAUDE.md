@@ -58,13 +58,22 @@ Read-only queries against Neon are fine without asking.
   hand-written.
 - **Do not add dependencies without asking.**
 - **All auth is a FastAPI dependency.** Never branch on token type inside a
-  shared dependency. Add a new dependency instead. There are two today:
-  `require_kiosk` (the wall iPad's shared device token) and `require_cron` (the
-  materializer's secret). Phase B adds a third for `/api/outstanding`; Phase C
-  adds `current_adult`. **Never widen `require_kiosk`.** That token sits on a
+  shared dependency. Add a new dependency instead. There are **four**:
+  `require_kiosk` (the wall iPad's shared device token), `require_cron` (the
+  materializer's secret), `require_outstanding` (the late-summary token, in an
+  iOS Shortcut) and `current_adult` (a signed-in parent). Each is mounted on its
+  own router in `main.py`, so no route can inherit the wrong one by being added
+  to the wrong file. **Never widen `require_kiosk`.** That token sits on a
   screen anyone in the kitchen can walk up to, including a kid's friend with a
   phone camera — it must never gain the power to write a definition, read
-  another household, or reach the dashboard.
+  another household, or reach the dashboard. Asserted in both directions for
+  every pair.
+- **Only `DATABASE_URL`, `DEVICE_TOKEN` and `HOUSEHOLD_ID` may ever be
+  `_require()`d.** Those three are the board itself. Every token added after
+  them is `os.environ.get(...) or None` and **fails closed**, so one unset
+  variable can never crash the API at import and take the wall down with it. A
+  missing secret shows up as a 401 on the surface it guards, never as a dark
+  kiosk and never as an open endpoint.
 - **Assignment is a pure function of the date.** `day_of_week` and `week_parity`
   are both derived from the due date — nothing is remembered and nothing
   advances. What stays unrepresentable is **state**: no `rotation_index`, no

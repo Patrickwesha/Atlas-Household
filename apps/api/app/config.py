@@ -44,6 +44,18 @@ CRON_SECRET: str | None = os.environ.get("CRON_SECRET") or None
 # every request — the endpoint reports who has not done what, so a
 # misconfigured deploy has to fail closed. See app/auth.py.
 OUTSTANDING_TOKEN: str | None = os.environ.get("OUTSTANDING_TOKEN") or None
+# The dashboard's JWT signing key. NOT _require()d — same rule as the two above,
+# and the rule is now explicit: only DATABASE_URL, DEVICE_TOKEN and HOUSEHOLD_ID
+# may ever be _require()d, because those three are the board itself. Everything
+# added after them fails closed, so one unset variable can never take the wall
+# down. Unset here means current_adult denies every request and nobody can log
+# in to the dashboard; the kiosk does not notice.
+SESSION_SECRET: str | None = os.environ.get("SESSION_SECRET") or None
+# How long a dashboard session lasts. Deliberately short: a parent may well log
+# in ON the wall iPad, which the kids then use unattended. Paired with
+# sessionStorage on the client, so closing the tab ends the session outright and
+# this is only the ceiling for a tab left open.
+SESSION_HOURS: int = 8
 ALLOWED_ORIGINS: list[str] = [
     o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()
 ]

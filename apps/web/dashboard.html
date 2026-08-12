@@ -1,0 +1,18 @@
+<!doctype html>
+<!--
+  The parent dashboard. A SEPARATE Vite entry from the kiosk on purpose: it
+  builds to its own bundle, so nothing here can change what the wall loads, and
+  the kiosk never ships a line of admin code.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Atlas — chores</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/dashboard/main.tsx"></script>
+  </body>
+</html>

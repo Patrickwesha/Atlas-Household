@@ -1,0 +1,236 @@
+/* Dashboard styles. Its own file and its own bundle — index.css is the kiosk's
+ * and is not imported here, so nothing in this file can move a pixel on the
+ * wall. Plain, dense and desktop-first: this is a form for two adults, not a
+ * display read from six feet away. */
+
+:root {
+  --d-ink: #231c3b;
+  --d-muted: #635e7a; /* 6.15:1 on white */
+  --d-line: #ded9ee;
+  --d-violet: #6a4cf0; /* 5.38:1 on white */
+  --d-danger: #b3123c; /* 8.06:1 on white */
+  --d-green: #0e7a57;
+  --d-wash: #f7f6fc;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--d-wash);
+  color: var(--d-ink);
+  font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+}
+:focus-visible {
+  outline: 3px solid var(--d-violet);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.dash {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 24px 18px 64px;
+}
+.dash-center {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+.dash-card {
+  background: #fff;
+  border: 1px solid var(--d-line);
+  border-radius: 14px;
+  padding: 26px;
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dash-card h1,
+.dash-head h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.dash-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.dash-head > div {
+  flex: 1 1 auto;
+}
+.dash-muted {
+  color: var(--d-muted);
+  font-size: 14px;
+  margin: 4px 0 0;
+}
+.dash-error {
+  color: var(--d-danger);
+  font-weight: 700;
+  margin: 8px 0 0;
+}
+
+.dash-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.dash-input {
+  font: inherit;
+  padding: 9px 11px;
+  border: 1px solid var(--d-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--d-ink);
+}
+.dash-check {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 9px;
+  font-weight: 600;
+  grid-column: 1 / -1;
+}
+
+.dash-primary,
+.dash-secondary,
+.dash-signout {
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-weight: 800;
+  min-height: 42px;
+}
+.dash-primary {
+  background: var(--d-violet);
+  color: #fff; /* 5.38:1 */
+}
+.dash-primary:disabled {
+  background: #c9c2e6;
+  color: #55507a;
+  cursor: not-allowed;
+}
+.dash-secondary {
+  background: #fff;
+  color: var(--d-violet);
+  border: 1px solid var(--d-line);
+}
+.dash-signout {
+  background: #fff;
+  color: var(--d-danger);
+  border: 1px solid var(--d-danger);
+  flex: 0 0 auto;
+}
+
+.dash-row {
+  background: #fff;
+  border: 1px solid var(--d-line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.dash-row h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.dash-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* A retired chore is dimmed but never hidden — it still exists, and its history
+ * still exists. Paired with the word RETIRED in the line beneath, so it is not
+ * carried by opacity alone. */
+.dash-off {
+  opacity: 0.62;
+}
+.dash-editing {
+  display: block;
+  border-color: var(--d-violet);
+  box-shadow: 0 0 0 2px rgba(106, 76, 240, 0.16);
+}
+.dash-grid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.dash-h3 {
+  font-size: 15px;
+  margin: 22px 0 8px;
+}
+
+.dash-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.dash-table th,
+.dash-table td {
+  border: 1px solid var(--d-line);
+  padding: 7px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.dash-table thead th {
+  background: var(--d-wash);
+  font-size: 13px;
+}
+.dash-table td {
+  text-align: center;
+}
+.dash-parity {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  max-width: 108px;
+}
+/* Shown, not omitted: a name that simply vanishes reads as a bug. The reason is
+ * spelled out in text beside it, and the API refuses the assignment regardless
+ * of what the UI does. */
+.dash-dependent {
+  background: var(--d-wash);
+  color: var(--d-muted);
+}
+
+.dash-preview {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--d-wash);
+  border: 1px solid var(--d-line);
+  border-radius: 10px;
+}
+.dash-appear,
+.dash-disappear {
+  margin: 3px 0;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+/* + and − carry the meaning as much as the colour does. */
+.dash-appear {
+  color: var(--d-green);
+}
+.dash-disappear {
+  color: var(--d-danger);
+}
+
+.dash-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}

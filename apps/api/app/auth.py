@@ -1,26 +1,38 @@
 """Authentication dependencies.
 
-There are three, and they never mix. `require_kiosk` is the shared device token
-on the wall iPad. `require_cron` is the nightly materializer's secret, held by
-Vercel and by nothing else. `require_outstanding` is the read-only late-chore
-summary's token, held by an iOS Shortcut on a phone.
+There are four, and they never mix.
+
+- `require_kiosk`       the shared device token on the wall iPad
+- `require_cron`        the nightly materializer's secret, held by Vercel
+- `require_outstanding` the read-only late summary's token, in an iOS Shortcut
+- `current_adult`       a real person, signed in to the dashboard
 
 Separate dependencies, not one dependency with a branch. Different device,
 different blast radius, different revocation: rotating the kiosk token because a
 kid's friend photographed the iPad must not also break the cron, and a leaked
-cron secret must not be able to read the board. A future `current_adult` (real
-per-user auth) arrives the same way — a fourth function here, not a fourth
-branch inside one of these.
+cron secret must not be able to read the board.
+
+`require_kiosk` IS NEVER WIDENED. That token sits on a screen anyone in the
+kitchen can walk up to, including a kid's friend with a phone camera. It reads
+the board and completes a chore; it can never write a definition, and the
+dashboard is unreachable with it. That is why `current_adult` is a fourth
+function here rather than a role check bolted onto the first one.
 """
 
 from __future__ import annotations
 
 import secrets
+from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
+import jwt
+import psycopg
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from psycopg.rows import DictRow
 
 from . import config
+from .db import get_db
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -120,3 +132,72 @@ def require_outstanding(
             detail="Invalid or missing outstanding token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+_JWT_ALG = "HS256"
+
+
+def issue_session(member_id: UUID) -> tuple[str, datetime]:
+    """Sign a dashboard session token. Returns (token, expires_at).
+
+    Raises if SESSION_SECRET is unset — the caller is the login route, which
+    turns that into a 503. Never a token signed with a fallback secret: a
+    predictable key is worse than no login at all.
+    """
+    secret = config.SESSION_SECRET
+    if secret is None:
+        raise RuntimeError("SESSION_SECRET is not set")
+    expires = datetime.now(timezone.utc) + timedelta(hours=config.SESSION_HOURS)
+    token = jwt.encode(
+        {"sub": str(member_id), "exp": expires}, secret, algorithm=_JWT_ALG
+    )
+    return token, expires
+
+
+def current_adult(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    conn: psycopg.Connection[DictRow] = Depends(get_db),
+) -> DictRow:
+    """The signed-in adult, or 401. Guards every dashboard route.
+
+    ALONGSIDE require_kiosk, never inside it. The kiosk's device token cannot
+    reach anything this guards, and this cannot complete a chore on the wall.
+
+    THE ROLE IS RE-READ ON EVERY REQUEST, not trusted from the token. A JWT
+    cannot be revoked before it expires, so if the only role check happened at
+    login, demoting an adult would leave them with dashboard write access for up
+    to SESSION_HOURS. Reading `members` each time costs one indexed primary-key
+    lookup and makes a demotion take effect on the next request.
+
+    Fails closed when SESSION_SECRET is unset: no secret, no valid signature,
+    nobody gets in.
+    """
+    secret = config.SESSION_SECRET
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Sign in required",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if secret is None or credentials is None:
+        raise unauthorized
+    try:
+        claims = jwt.decode(
+            credentials.credentials,
+            secret,
+            algorithms=[_JWT_ALG],
+            options={"require": ["exp", "sub"]},
+        )
+        member_id = UUID(str(claims["sub"]))
+    except Exception:
+        # Expired, tampered, wrong algorithm, unparseable subject — all the same
+        # answer. Distinguishing them tells an attacker which part they got right.
+        raise unauthorized from None
+
+    member = conn.execute(
+        "select id, name, role, household_id from members "
+        "where id = %s and household_id = %s",
+        (member_id, config.HOUSEHOLD_ID),
+    ).fetchone()
+    if member is None or member["role"] != "adult":
+        raise unauthorized
+    return member

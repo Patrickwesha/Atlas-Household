@@ -8,6 +8,12 @@ anyio==4.14.2
     # via
     #   starlette
     #   watchfiles
+argon2-cffi==25.1.0
+    # via atlas-api
+argon2-cffi-bindings==25.1.0
+    # via argon2-cffi
+cffi==2.1.1
+    # via argon2-cffi-bindings
 click==8.4.2
     # via uvicorn
 colorama==0.4.6 ; sys_platform == 'win32'
@@ -24,10 +30,14 @@ psycopg==3.3.4
     # via atlas-api
 psycopg-binary==3.3.4 ; implementation_name != 'pypy'
     # via psycopg
+pycparser==3.0 ; implementation_name != 'PyPy'
+    # via cffi
 pydantic==2.13.4
     # via fastapi
 pydantic-core==2.46.4
     # via pydantic
+pyjwt==2.13.0
+    # via atlas-api
 python-dotenv==1.2.2
     # via uvicorn
 pyyaml==6.0.3
